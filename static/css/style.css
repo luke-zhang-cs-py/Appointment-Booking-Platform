@@ -414,6 +414,21 @@ tr:last-child td { border-bottom: none; }
 .status-pill.confirmed { background: rgba(79,163,150,0.18); color: var(--teal-strong); }
 .status-pill.cancelled { background: rgba(193,87,63,0.18); color: var(--clay-strong); }
 .status-pill.completed { background: rgba(217,164,65,0.18); color: var(--brass-strong); }
+.status-pill.sent { background: rgba(79,163,150,0.18); color: var(--teal-strong); }
+.status-pill.queued { background: rgba(140,150,170,0.18); color: var(--muted); }
+.status-pill.failed { background: rgba(193,87,63,0.18); color: var(--clay-strong); }
+
+/* email log */
+.mail-status { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.mail-error {
+  margin-top: 0.3rem;
+  max-width: 220px;
+  font-size: 0.7rem;
+  color: var(--clay-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ticket-stub appointment cards for the client view */
 .ticket-list { display: flex; flex-direction: column; gap: 0.75rem; }

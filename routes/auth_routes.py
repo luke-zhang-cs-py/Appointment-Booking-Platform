@@ -3,6 +3,7 @@ import re
 from flask import Blueprint, g, jsonify, request
 
 import database as db
+import notifications
 from auth import create_token, hash_password, token_required, verify_password
 
 bp = Blueprint("auth_routes", __name__, url_prefix="/api/auth")
@@ -33,12 +34,13 @@ def register():
     if existing:
         return jsonify({"error": "An account with that email already exists"}), 409
 
-    user_id = db.execute(
+    user_id = db.insert(
         "INSERT INTO users (name, email, password_hash, role, specialty) "
         "VALUES (?, ?, ?, ?, ?)",
         (name, email, hash_password(password), role, specialty),
     )
     user = db.query("SELECT * FROM users WHERE id = ?", (user_id,), one=True)
+    notifications.send_welcome(user)
     token = create_token(user)
     return jsonify({"token": token, "user": _public(user)}), 201
 

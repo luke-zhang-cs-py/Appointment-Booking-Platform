@@ -109,6 +109,7 @@ const NAV_BY_ROLE = {
   admin: [
     { id: "users", label: "Users" },
     { id: "all-appointments", label: "All appointments" },
+    { id: "emails", label: "Email log" },
   ],
 };
 
@@ -150,6 +151,7 @@ function selectView(viewId) {
     "appointments": renderProviderAppointmentsView,
     "users": renderAdminUsersView,
     "all-appointments": renderAdminAppointmentsView,
+    "emails": renderAdminEmailsView,
   };
   (renderers[viewId] || (() => {}))();
 }
@@ -564,6 +566,124 @@ async function renderAdminAppointmentsView() {
   } catch (err) {
     card.append(el("div", { class: "form-msg error" }, err.message));
   }
+}
+
+/* ---------------------------------------------------------------- */
+/* ADMIN: Email log                                                   */
+/* ---------------------------------------------------------------- */
+const EMAIL_KIND_LABELS = {
+  welcome: "Welcome",
+  booked_client: "Booking confirmed → client",
+  booked_provider: "New booking → provider",
+  cancelled_client: "Cancelled → client",
+  cancelled_provider: "Cancelled → provider",
+  completed_client: "Completed → client",
+  reminder_client: "Reminder → client",
+  reminder_provider: "Reminder → provider",
+  test: "Test email",
+};
+
+async function renderAdminEmailsView() {
+  const root = mainRoot();
+  root.innerHTML = "";
+  root.append(
+    el("h2", {}, "Email log"),
+    el("p", { class: "lede" }, "Every message the platform has sent automatically.")
+  );
+
+  const toolbar = el("div", { class: "card" }, [el("h3", {}, "Delivery")]);
+  const status = el("div", { class: "mail-status" });
+  const actions = el("div", { class: "inline-form", style: "margin-top:1rem;" });
+  toolbar.append(status, actions);
+  root.append(toolbar);
+
+  const card = el("div", { class: "card" });
+  root.append(card);
+
+  const testField = el("div", { class: "field" }, [
+    el("label", { for: "test-email-to" }, "Send a test email to"),
+    el("input", { type: "email", id: "test-email-to", placeholder: "you@example.com" }),
+  ]);
+  const testBtn = el("button", { class: "btn btn-primary" }, "Send test");
+  testBtn.onclick = async () => {
+    testBtn.disabled = true;
+    try {
+      const body = {};
+      const to = $("#test-email-to").value.trim();
+      if (to) body.to = to;
+      const res = await Api.post("/api/admin/emails/test", body);
+      toast(`Test email queued for ${res.to}.`, "success");
+      setTimeout(load, 600);
+    } catch (err) { toast(err.message, "error"); }
+    finally { testBtn.disabled = false; }
+  };
+
+  const remindBtn = el("button", { class: "btn btn-teal" }, "Run reminders now");
+  remindBtn.onclick = async () => {
+    remindBtn.disabled = true;
+    try {
+      const { queued } = await Api.post("/api/admin/emails/run-reminders", {});
+      toast(queued ? `${queued} reminder email(s) queued.` : "No reminders were due.", queued ? "success" : "info");
+      setTimeout(load, 600);
+    } catch (err) { toast(err.message, "error"); }
+    finally { remindBtn.disabled = false; }
+  };
+
+  const refreshBtn = el("button", { class: "btn btn-ghost" }, "Refresh");
+  refreshBtn.onclick = () => load();
+
+  actions.append(testField, testBtn, remindBtn, refreshBtn);
+
+  async function load() {
+    card.innerHTML = "";
+    let data;
+    try {
+      data = await Api.get("/api/admin/emails");
+    } catch (err) {
+      card.append(el("div", { class: "form-msg error" }, err.message));
+      return;
+    }
+
+    status.innerHTML = "";
+    status.append(
+      el("span", { class: `status-pill ${data.enabled ? "sent" : "failed"}` }, data.enabled ? "Mail on" : "Mail off"),
+      el("span", { class: "mono" }, data.transport === "smtp" ? "SMTP server" : "Console (no SMTP_HOST set)"),
+      el("span", { class: "mono" }, `Reminders ${Number(data.reminder_hours_before).toFixed(0)}h ahead`)
+    );
+
+    if (!data.emails.length) {
+      card.append(el("div", { class: "empty-state" }, [
+        el("div", { class: "glyph" }, "✉"),
+        "Nothing sent yet. Book an appointment, or send yourself a test.",
+      ]));
+      return;
+    }
+
+    const table = el("table", {}, [
+      el("thead", {}, el("tr", {}, [
+        el("th", {}, "Sent"), el("th", {}, "Type"), el("th", {}, "To"),
+        el("th", {}, "Subject"), el("th", {}, "Status"),
+      ])),
+    ]);
+    const tbody = el("tbody");
+    data.emails.forEach((m) => {
+      const statusCell = el("td", {}, [
+        el("span", { class: `status-pill ${m.status}` }, m.status),
+      ]);
+      if (m.error) statusCell.append(el("div", { class: "mail-error", title: m.error }, m.error));
+      tbody.append(el("tr", {}, [
+        el("td", { class: "mono" }, String(m.sent_at || m.created_at || "").slice(0, 16)),
+        el("td", {}, EMAIL_KIND_LABELS[m.kind] || m.kind),
+        el("td", { class: "mono" }, m.recipient),
+        el("td", {}, m.subject),
+        statusCell,
+      ]));
+    });
+    table.append(tbody);
+    card.append(table);
+  }
+
+  load();
 }
 
 /* ---------------------------------------------------------------- */

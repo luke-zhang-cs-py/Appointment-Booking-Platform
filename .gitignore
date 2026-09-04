@@ -1,0 +1,11 @@
+# Local database (created on first run)
+*.db
+
+# Real secrets -- .env.example is the version that gets committed
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

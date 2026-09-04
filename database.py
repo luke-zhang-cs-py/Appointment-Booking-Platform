@@ -114,6 +114,37 @@ def execute(sql, params=(), conn=None):
     return last_id
 
 
+def insert(sql, params=(), conn=None):
+    """
+    INSERT helper that returns the new row's id on *both* backends.
+
+    sqlite3 exposes it as cursor.lastrowid; Postgres needs an explicit
+    "RETURNING id", which is appended here so callers write one query.
+    """
+    conn = conn or get_db()
+    cur = conn.cursor()
+    if _IS_POSTGRES:
+        cur.execute(_adapt_sql(sql.rstrip().rstrip(";") + " RETURNING id"), params)
+        row = cur.fetchone()
+        new_id = row[0] if row else None
+    else:
+        cur.execute(_adapt_sql(sql), params)
+        new_id = cur.lastrowid
+    conn.commit()
+    cur.close()
+    return new_id
+
+
+def rollback(conn=None):
+    """
+    Abandon the current transaction. Postgres refuses every further statement
+    on a connection once one has raised an error, so any `except IntegrityError`
+    branch that keeps using the connection must call this first.
+    """
+    conn = conn or get_db()
+    conn.rollback()
+
+
 def executescript(sql, conn=None):
     conn = conn or get_db()
     if _IS_POSTGRES:
@@ -175,6 +206,26 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_slot
 ON appointments (provider_id, date, start_time)
 WHERE status = 'confirmed';
+
+CREATE TABLE IF NOT EXISTS email_log (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind           TEXT NOT NULL,
+    recipient      TEXT NOT NULL,
+    subject        TEXT NOT NULL,
+    appointment_id INTEGER REFERENCES appointments(id) ON DELETE CASCADE,
+    user_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    status         TEXT NOT NULL DEFAULT 'queued'
+                   CHECK (status IN ('queued', 'sent', 'failed')),
+    error          TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    sent_at        TEXT
+);
+
+-- Doubles as the de-duplication rule: one message of each kind per person per
+-- appointment, so a reminder can never go out twice even if two scans overlap.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_appointment_email
+ON email_log (appointment_id, kind, recipient)
+WHERE appointment_id IS NOT NULL;
 """
 
 SCHEMA_POSTGRES = """
@@ -223,6 +274,26 @@ CREATE TABLE IF NOT EXISTS appointments (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_slot
 ON appointments (provider_id, date, start_time)
 WHERE status = 'confirmed';
+
+CREATE TABLE IF NOT EXISTS email_log (
+    id             SERIAL PRIMARY KEY,
+    kind           TEXT NOT NULL,
+    recipient      TEXT NOT NULL,
+    subject        TEXT NOT NULL,
+    appointment_id INTEGER REFERENCES appointments(id) ON DELETE CASCADE,
+    user_id        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    status         TEXT NOT NULL DEFAULT 'queued'
+                   CHECK (status IN ('queued', 'sent', 'failed')),
+    error          TEXT,
+    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    sent_at        TIMESTAMP
+);
+
+-- Doubles as the de-duplication rule: one message of each kind per person per
+-- appointment, so a reminder can never go out twice even if two scans overlap.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_appointment_email
+ON email_log (appointment_id, kind, recipient)
+WHERE appointment_id IS NOT NULL;
 """
 
 

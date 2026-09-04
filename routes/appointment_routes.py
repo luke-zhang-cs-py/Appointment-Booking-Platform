@@ -3,6 +3,7 @@ import sqlite3
 from flask import Blueprint, g, jsonify, request
 
 import database as db
+import notifications
 from auth import roles_required, token_required
 from calendar_logic import is_slot_free
 
@@ -42,13 +43,16 @@ def book_appointment():
         return jsonify({"error": "That slot is no longer available. Please pick another."}), 409
 
     try:
-        new_id = db.execute(
+        new_id = db.insert(
             "INSERT INTO appointments (provider_id, client_id, date, start_time, end_time, notes) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             (provider_id, g.current_user["id"], date_str, start_time, end_time, notes),
         )
     except INTEGRITY_ERRORS:
+        db.rollback()
         return jsonify({"error": "That slot was just booked by someone else. Please pick another."}), 409
+
+    notifications.notify_booked(new_id)
 
     appt = db.query("SELECT * FROM appointments WHERE id = ?", (new_id,), one=True)
     return jsonify({"appointment": appt}), 201
@@ -111,6 +115,7 @@ def cancel_appointment(appt_id):
         return jsonify({"error": f"Appointment is already {appt['status']}"}), 400
 
     db.execute("UPDATE appointments SET status = 'cancelled' WHERE id = ?", (appt_id,))
+    notifications.notify_cancelled(appt_id, cancelled_by=g.current_user)
     return jsonify({"cancelled": True})
 
 
@@ -127,4 +132,5 @@ def complete_appointment(appt_id):
         return jsonify({"error": f"Appointment is already {appt['status']}"}), 400
 
     db.execute("UPDATE appointments SET status = 'completed' WHERE id = ?", (appt_id,))
+    notifications.notify_completed(appt_id)
     return jsonify({"completed": True})

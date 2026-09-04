@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Almanac — Appointment Booking</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<div id="auth-screen">
+  <div class="ledger">
+    <div class="ledger-cover">
+      <div class="brand"><span class="mark">Almanac</span></div>
+      <div>
+        <h1>The book stays open for everyone.</h1>
+        <p>One shared calendar for clients, providers, and admins — no double-bookings, no back-and-forth.</p>
+        <div class="roles">
+          <div><span class="tag" style="background:var(--muted)"></span>Client — books open slots</div>
+          <div><span class="tag" style="background:var(--teal)"></span>Provider — sets weekly hours</div>
+          <div><span class="tag" style="background:var(--brass)"></span>Admin — oversees the whole book</div>
+        </div>
+      </div>
+      <span class="brand sub">v1 · secure · self-hosted</span>
+    </div>
+    <div class="ledger-form">
+      <div class="tabs">
+        <button class="tab active" data-mode="login">Sign in</button>
+        <button class="tab" data-mode="register">Create account</button>
+      </div>
+      <div id="auth-msg" class="form-msg error hidden"></div>
+      <form id="auth-form">
+        <div class="field hidden" id="field-name">
+          <label for="input-name">Full name</label>
+          <input type="text" id="input-name" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="input-email">Email</label>
+          <input type="email" id="input-email" autocomplete="email" required>
+        </div>
+        <div class="field">
+          <label for="input-password">Password</label>
+          <input type="password" id="input-password" autocomplete="current-password" required minlength="8">
+        </div>
+        <div class="field hidden" id="field-role">
+          <label>I am a</label>
+          <div class="role-picker">
+            <label><input type="radio" name="role" value="client" checked><span>Client</span></label>
+            <label><input type="radio" name="role" value="provider"><span>Provider</span></label>
+          </div>
+        </div>
+        <div class="field hidden" id="field-specialty">
+          <label for="input-specialty">Specialty / service</label>
+          <input type="text" id="input-specialty" placeholder="e.g. Dermatology, Haircuts, Tutoring">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="auth-submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div id="app-screen" class="hidden">
+  <aside class="sidebar">
+    <div class="brand"><span class="mark">Almanac</span></div>
+    <nav id="sidebar-nav"></nav>
+    <div class="sidebar-foot">
+      <div class="who" id="who-name"></div>
+      <span class="role-badge" id="who-role"></span>
+      <div style="margin-top:1rem;">
+        <button class="btn btn-ghost btn-block" id="logout-btn">Sign out</button>
+      </div>
+    </div>
+  </aside>
+  <main class="main" id="main-content"></main>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

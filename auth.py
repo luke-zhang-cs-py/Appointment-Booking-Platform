@@ -19,7 +19,8 @@ def verify_password(raw_password: str, password_hash: str) -> bool:
 def create_token(user: dict) -> str:
     now = datetime.datetime.utcnow()
     payload = {
-        "sub": user["id"],
+        # RFC 7519 says "sub" is a string, and PyJWT >= 2.10 enforces it.
+        "sub": str(user["id"]),
         "role": user["role"],
         "name": user["name"],
         "iat": now,
@@ -54,7 +55,7 @@ def token_required(fn):
         except jwt.InvalidTokenError:
             return jsonify({"error": "Invalid token"}), 401
 
-        user = db.query("SELECT * FROM users WHERE id = ?", (payload["sub"],), one=True)
+        user = db.query("SELECT * FROM users WHERE id = ?", (int(payload["sub"]),), one=True)
         if not user or not user.get("is_active", 1):
             return jsonify({"error": "Account not found or deactivated"}), 401
 

@@ -14,6 +14,12 @@ HTML/CSS/JS single-page frontend served by the same app. Three roles —
   weekly hours, one-off blocked dates, and existing bookings into a live
   list of free slots for any date; filters out past times for "today";
   a unique DB constraint blocks race-condition double-bookings.
+- **Automatic email notifications** (`mailer.py` + `notifications.py`) — welcome,
+  booking confirmation, cancellation, completion, and a 24-hour reminder, sent
+  without anyone pressing a button. Delivery happens on a background thread so
+  a slow mail server never slows down a booking, every attempt is recorded in
+  an `email_log` table, and a unique index over that log guarantees nobody is
+  mailed the same thing twice.
 - **Database layer built for the cloud** — runs on local SQLite with zero
   setup, and switches to a managed cloud Postgres database (Supabase, Neon,
   Render, Railway, AWS RDS...) by changing one environment variable
@@ -27,11 +33,14 @@ config.py                  Reads all settings from environment variables
 database.py                DB abstraction: SQLite locally, Postgres in the cloud
 auth.py                    JWT creation/verification, RBAC decorators
 calendar_logic.py          Free-slot calculation engine
+mailer.py                  Email transport: SMTP, background queue, delivery log
+notifications.py           What gets mailed and when + the reminder scheduler
 routes/
   auth_routes.py           /api/auth/register, /login, /me
   user_routes.py           /api/providers, /api/admin/users
   availability_routes.py   provider hours + blocked dates, public slot lookup
   appointment_routes.py    book / list / cancel / complete appointments
+  email_routes.py          admin delivery log, test send, manual reminder run
 templates/index.html       SPA shell
 static/css/style.css       Design system ("departure board" visual identity)
 static/js/api.js           Fetch wrapper (JWT storage + auth headers)
@@ -90,9 +99,55 @@ for production instead of Flask's dev server).
 | POST   | `/api/appointments/<id>/complete`        | provider/admin |
 | GET    | `/api/admin/users`                       | admin          |
 | PATCH  | `/api/admin/users/<id>`                  | admin          |
+| GET    | `/api/admin/emails`                      | admin          |
+| POST   | `/api/admin/emails/test`                 | admin          |
+| POST   | `/api/admin/emails/run-reminders`        | admin          |
 
 All routes except `/api/auth/register` and `/api/auth/login` require
 `Authorization: Bearer <token>`.
+
+## Email notifications
+
+Five messages go out on their own, no button required:
+
+| When                                   | Who gets mailed        |
+|----------------------------------------|------------------------|
+| An account is created                  | the new user           |
+| A client books a slot                  | client **and** provider |
+| An appointment is cancelled            | client **and** provider |
+| A provider marks an appointment done   | the client             |
+| `REMINDER_HOURS_BEFORE` the start time | client **and** provider |
+
+**Locally there is nothing to configure.** With `SMTP_HOST` unset, each message
+is printed to the terminal running `python app.py` — you can book an
+appointment and watch the confirmation appear. Set `SMTP_HOST`, `SMTP_USERNAME`,
+and `SMTP_PASSWORD` (SendGrid, Mailgun, Postmark, SES, Gmail app password…) and
+the identical messages start being delivered. No extra pip package: it's
+`smtplib` from the standard library.
+
+Every message is multipart — plain text plus a styled HTML version — and both
+halves are generated from one description of the message, so they can't drift
+apart.
+
+Signed in as an admin, **Email log** in the sidebar shows what has been sent,
+to whom, and whether it landed, with a **Send test** button for checking SMTP
+credentials and **Run reminders now** for forcing a scan.
+
+How it holds up:
+
+- **Nothing blocks on the mail server.** `mailer.send()` writes a row and hands
+  the message to a background worker thread; the booking request returns
+  immediately. A refused SMTP connection is logged as a failed row, never a 500.
+- **Nobody is mailed twice.** A unique index on
+  `email_log (appointment_id, kind, recipient)` is the source of truth, so
+  overlapping reminder scans, a double-clicked button, or several web workers
+  running at once all collapse to one message.
+- **Failures are retried.** A row left in `failed` is picked up by the next
+  reminder scan.
+
+Reminders run from a background thread every `REMINDER_SCAN_MINUTES`. If you
+prefer a real scheduler, set `REMINDERS_ENABLED=0` and point cron at
+`POST /api/admin/emails/run-reminders` instead.
 
 ## Notes on production hardening
 
@@ -101,4 +156,7 @@ production-audited one. Before shipping it publicly, you'd want to add:
 rate limiting on `/api/auth/*`, refresh tokens (current tokens just expire
 after `JWT_EXP_HOURS`), email verification, HTTPS enforcement, and a
 migration tool (e.g. Alembic) instead of the create-if-not-exists schema
-in `database.py`.
+in `database.py`. On the email side: an unsubscribe link and a per-user
+notification preference, SPF/DKIM records for whatever domain you send from,
+and — once one process is no longer enough — moving the reminder scan out of
+the app thread and into cron or a task queue.
