@@ -2,6 +2,7 @@ from flask import Blueprint, g, jsonify, request
 
 import database as db
 from auth import roles_required, token_required
+from routes import camel_keys
 
 bp = Blueprint("user_routes", __name__, url_prefix="/api")
 
@@ -14,7 +15,7 @@ def list_providers():
         "SELECT id, name, specialty FROM users WHERE role = 'provider' AND is_active = 1 "
         "ORDER BY name"
     )
-    return jsonify({"providers": rows})
+    return jsonify({"providers": camel_keys(rows)})
 
 
 @bp.get("/admin/users")
@@ -25,7 +26,7 @@ def admin_list_users():
         "SELECT id, name, email, role, specialty, is_active, created_at FROM users "
         "ORDER BY created_at DESC"
     )
-    return jsonify({"users": rows})
+    return jsonify({"users": camel_keys(rows)})
 
 
 @bp.patch("/admin/users/<int:user_id>")

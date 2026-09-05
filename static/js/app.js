@@ -316,8 +316,8 @@ async function renderClientAppointmentsView() {
       const ticket = el("div", { class: "ticket" }, [
         el("div", { class: "date-block" }, [el("div", { class: "day" }, day), el("div", { class: "mon" }, mon)]),
         el("div", { class: "info" }, [
-          el("div", { class: "who" }, a.provider_name),
-          el("div", { class: "when" }, `${a.start_time} – ${a.end_time}`),
+          el("div", { class: "who" }, a.providerName),
+          el("div", { class: "when" }, `${a.startTime} – ${a.endTime}`),
           el("span", { class: `status-pill ${a.status}` }, a.status),
         ]),
         el("div", { class: "actions" }, a.status === "confirmed" ? [
@@ -385,12 +385,12 @@ async function renderProviderScheduleView() {
 
     daysWrap.innerHTML = "";
     DAY_NAMES.forEach((name, idx) => {
-      const dayWindows = windows.filter((w) => w.day_of_week === idx);
+      const dayWindows = windows.filter((w) => w.dayOfWeek === idx);
       const row = el("div", { class: "day-row" }, [
         el("div", { class: "day-name" }, name),
         el("div", { class: "windows" }, dayWindows.length ? dayWindows.map((w) => {
           const chip = el("span", { class: "window-chip" }, [
-            `${w.start_time}–${w.end_time} · ${w.slot_minutes}m`,
+            `${w.startTime}–${w.endTime} · ${w.slotMinutes}m`,
           ]);
           const del = el("button", { title: "Remove" }, "×");
           del.onclick = async () => {
@@ -485,9 +485,9 @@ async function renderProviderAppointmentsView() {
         actions.append(complete, cancel);
       }
       tbody.append(el("tr", {}, [
-        el("td", {}, a.client_name),
+        el("td", {}, a.clientName),
         el("td", { class: "mono" }, a.date),
-        el("td", { class: "mono" }, `${a.start_time}–${a.end_time}`),
+        el("td", { class: "mono" }, `${a.startTime}–${a.endTime}`),
         el("td", {}, el("span", { class: `status-pill ${a.status}` }, a.status)),
         el("td", {}, actions),
       ]));
@@ -767,16 +767,16 @@ async function renderAdminUsersView() {
     ]);
     const tbody = el("tbody");
     users.forEach((u) => {
-      const toggleBtn = el("button", { class: u.is_active ? "btn btn-danger" : "btn btn-teal" }, u.is_active ? "Deactivate" : "Activate");
+      const toggleBtn = el("button", { class: u.isActive ? "btn btn-danger" : "btn btn-teal" }, u.isActive ? "Deactivate" : "Activate");
       toggleBtn.onclick = async () => {
-        try { await Api.patch(`/api/admin/users/${u.id}`, { is_active: !u.is_active }); renderAdminUsersView(); }
+        try { await Api.patch(`/api/admin/users/${u.id}`, { is_active: !u.isActive }); renderAdminUsersView(); }
         catch (err) { toast(err.message, "error"); }
       };
       tbody.append(el("tr", {}, [
         el("td", {}, u.name),
         el("td", { class: "mono" }, u.email),
         el("td", {}, el("span", { class: `role-badge ${u.role}` }, u.role)),
-        el("td", {}, u.is_active ? "Active" : "Deactivated"),
+        el("td", {}, u.isActive ? "Active" : "Deactivated"),
         el("td", {}, toggleBtn),
       ]));
     });
@@ -809,10 +809,10 @@ async function renderAdminAppointmentsView() {
     const tbody = el("tbody");
     appointments.forEach((a) => {
       tbody.append(el("tr", {}, [
-        el("td", {}, a.client_name),
-        el("td", {}, a.provider_name),
+        el("td", {}, a.clientName),
+        el("td", {}, a.providerName),
         el("td", { class: "mono" }, a.date),
-        el("td", { class: "mono" }, `${a.start_time}–${a.end_time}`),
+        el("td", { class: "mono" }, `${a.startTime}–${a.endTime}`),
         el("td", {}, el("span", { class: `status-pill ${a.status}` }, a.status)),
       ]));
     });
@@ -903,7 +903,7 @@ async function renderAdminEmailsView() {
     status.append(
       el("span", { class: `status-pill ${data.enabled ? "sent" : "failed"}` }, data.enabled ? "Mail on" : "Mail off"),
       el("span", { class: "mono" }, data.transport === "smtp" ? "SMTP server" : "Console (no SMTP_HOST set)"),
-      el("span", { class: "mono" }, `Reminders ${Number(data.reminder_hours_before).toFixed(0)}h ahead`)
+      el("span", { class: "mono" }, `Reminders ${Number(data.reminderHoursBefore).toFixed(0)}h ahead`)
     );
 
     if (!data.emails.length) {
@@ -927,7 +927,7 @@ async function renderAdminEmailsView() {
       ]);
       if (m.error) statusCell.append(el("div", { class: "mail-error", title: m.error }, m.error));
       tbody.append(el("tr", {}, [
-        el("td", { class: "mono" }, String(m.sent_at || m.created_at || "").slice(0, 16)),
+        el("td", { class: "mono" }, String(m.sentAt || m.createdAt || "").slice(0, 16)),
         el("td", {}, EMAIL_KIND_LABELS[m.kind] || m.kind),
         el("td", { class: "mono" }, m.recipient),
         el("td", {}, m.subject),

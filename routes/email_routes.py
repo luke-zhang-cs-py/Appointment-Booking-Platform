@@ -5,6 +5,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 import database as db
 import notifications
 from auth import roles_required, token_required
+from routes import camel_keys
 
 bp = Blueprint("email_routes", __name__, url_prefix="/api/admin/emails")
 
@@ -35,14 +36,12 @@ def list_emails():
     params.append(limit)
 
     rows = db.query(sql, tuple(params))
-    return jsonify(
-        {
-            "emails": rows,
-            "transport": "smtp" if current_app.config["SMTP_HOST"] else "console",
-            "enabled": current_app.config["MAIL_ENABLED"],
-            "reminder_hours_before": current_app.config["REMINDER_HOURS_BEFORE"],
-        }
-    )
+    return jsonify({
+        "emails": camel_keys(rows),
+        "transport": "smtp" if current_app.config["SMTP_HOST"] else "console",
+        "enabled": current_app.config["MAIL_ENABLED"],
+        "reminderHoursBefore": current_app.config["REMINDER_HOURS_BEFORE"],
+    })
 
 
 @bp.post("/test")

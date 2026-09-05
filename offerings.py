@@ -160,10 +160,17 @@ def list_for_provider(provider_id, active_only=True, conn=None):
     return db.query(sql, tuple(params), conn=conn)
 
 
-def update(offering_id, provider_id, **patch):
-    """Patch an offering. Only the caller's own rows, only known columns."""
+def update(offering_id, owner_id, **patch):
+    """Patch an offering. Only the caller's own rows, only known columns.
+
+    `owner_id` rather than `provider_id` because the patch arrives as
+    keyword arguments: a caller passing provider_id="..." collided with this
+    parameter and raised TypeError rather than being rejected as an unknown
+    column. The route never sends one, so it was a trap for direct callers
+    rather than a live fault -- but it failed with a 500 instead of a 400.
+    """
     existing = get(offering_id)
-    if not existing or existing["provider_id"] != provider_id:
+    if not existing or existing["provider_id"] != owner_id:
         raise OfferingError("Offering not found.")
 
     # Patchable columns are the draft's fields plus is_active, which is not
@@ -185,7 +192,7 @@ def update(offering_id, provider_id, **patch):
     return get(offering_id)
 
 
-def deactivate(offering_id, provider_id):
+def deactivate(offering_id, owner_id):
     """Hide an offering rather than delete it.
 
     Appointments and invites reference it, and a booking that says "the
@@ -193,7 +200,7 @@ def deactivate(offering_id, provider_id):
     it was. is_active keeps history readable.
     """
     existing = get(offering_id)
-    if not existing or existing["provider_id"] != provider_id:
+    if not existing or existing["provider_id"] != owner_id:
         raise OfferingError("Offering not found.")
     db.execute("UPDATE offerings SET is_active = 0 WHERE id = ?", (offering_id,))
     return get(offering_id)

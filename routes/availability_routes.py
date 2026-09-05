@@ -15,6 +15,7 @@ from flask import Blueprint, g, jsonify, request
 
 import database as db
 from auth import roles_required, token_required
+from routes import camel_keys
 from calendar_logic import get_free_slots
 
 bp = Blueprint("availability_routes", __name__, url_prefix="/api")
@@ -43,7 +44,7 @@ def free_slots(provider_id):
         slots = get_free_slots(provider_id, date_str)
     except ValueError:
         return jsonify({"error": "Date must be in YYYY-MM-DD format"}), 400
-    return jsonify({"provider_id": provider_id, "date": date_str, "slots": slots})
+    return jsonify({"providerId": provider_id, "date": date_str, "slots": slots})
 
 
 @bp.get("/availability/mine")
@@ -58,7 +59,7 @@ def my_availability():
         "SELECT * FROM blocked_slots WHERE provider_id = ? ORDER BY date",
         (g.current_user["id"],),
     )
-    return jsonify({"windows": windows, "blocks": blocks})
+    return jsonify(camel_keys({"windows": windows, "blocks": blocks}))
 
 
 @bp.post("/availability/mine")

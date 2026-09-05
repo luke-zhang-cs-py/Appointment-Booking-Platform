@@ -5,6 +5,7 @@ from flask import Blueprint, g, jsonify, request
 import database as db
 import notifications
 from auth import roles_required, token_required
+from routes import camel_keys
 from calendar_logic import is_slot_free
 
 bp = Blueprint("appointment_routes", __name__, url_prefix="/api/appointments")
@@ -57,7 +58,7 @@ def book_appointment():
     notifications.notify_booked(new_id)
 
     appt = db.query("SELECT * FROM appointments WHERE id = ?", (new_id,), one=True)
-    return jsonify({"appointment": appt}), 201
+    return jsonify({"appointment": camel_keys(appt)}), 201
 
 
 @bp.get("/mine")
@@ -87,7 +88,7 @@ def my_appointments():
             "JOIN users c ON c.id = a.client_id "
             "ORDER BY a.date DESC, a.start_time"
         )
-    return jsonify({"appointments": rows})
+    return jsonify({"appointments": camel_keys(rows)})
 
 
 def _load(appt_id):

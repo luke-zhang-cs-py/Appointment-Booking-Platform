@@ -80,14 +80,14 @@ def test_booking_outside_the_working_day_is_409(client, provider, booking):
 def test_each_role_sees_its_own_side(client, provider, booking, admin):
     mine = client.get("/api/appointments/mine", headers=booking["auth"]).get_json()
     assert len(mine["appointments"]) == 1
-    assert mine["appointments"][0]["provider_name"] == "Test Provider"
+    assert mine["appointments"][0]["providerName"] == "Test Provider"
 
     theirs = client.get("/api/appointments/mine", headers=provider["auth"]).get_json()
-    assert theirs["appointments"][0]["client_name"] == "Bo Oker"
+    assert theirs["appointments"][0]["clientName"] == "Bo Oker"
 
     everything = client.get("/api/appointments/mine", headers=admin["auth"]).get_json()
     assert len(everything["appointments"]) == 1
-    assert "provider_name" in everything["appointments"][0]
+    assert "providerName" in everything["appointments"][0]
 
 
 def test_appointments_need_a_login(client):
