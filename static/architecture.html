@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Almanac — Architecture overview</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --ink: #12161d;
+  --panel: #1b2230;
+  --panel-alt: #232c3d;
+  --panel-raised: #29334a;
+  --border: #2c3547;
+  --parchment: #ece6d6;
+  --parchment-dim: #c9c3b2;
+  --muted: #8d93a3;
+  --brass: #d9a441;
+  --brass-strong: #f0bd5c;
+  --teal: #4fa396;
+  --teal-strong: #6fc0b3;
+  --clay: #c1573f;
+  --clay-strong: #dd7057;
+
+  /* Chart marks. Validated against the --panel surface in dark mode:
+     lightness band, chroma floor, CVD separation (worst pair ΔE 12.4 protan),
+     normal-vision floor (19.4), contrast — all pass. Do not hand-tweak. */
+  --series-new: #bb8d0c;
+  --series-existing: #0f9485;
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 16px;
+  --shadow-card: 0 10px 30px -12px rgba(0, 0, 0, 0.55);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  background-image:
+    radial-gradient(circle at 12% 0%, rgba(217, 164, 65, 0.07), transparent 45%),
+    radial-gradient(circle at 88% 100%, rgba(79, 163, 150, 0.07), transparent 45%);
+  color: var(--parchment);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--brass-strong); }
+::selection { background: var(--brass); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--brass-strong); outline-offset: 2px; border-radius: 3px; }
+
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 1.75rem 5rem; }
+
+/* ---------------------------------------------------------------- */
+/* Top bar                                                           */
+/* ---------------------------------------------------------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(18, 22, 29, 0.88);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: 1120px; margin: 0 auto; padding: 0.7rem 1.75rem;
+  display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
+}
+.brand { display: flex; align-items: baseline; gap: 0.5rem; }
+.brand .mark {
+  font-family: var(--font-display); font-size: 1.15rem; font-weight: 700;
+  color: var(--parchment); letter-spacing: -0.01em;
+}
+.brand .mark::after { content: '·'; color: var(--teal-strong); margin-left: 2px; }
+.brand .sub {
+  font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted);
+}
+.topnav { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-left: auto; }
+.topnav a {
+  color: var(--muted); text-decoration: none; font-size: 0.8rem;
+  padding: 0.2rem 0; border-bottom: 1px solid transparent;
+}
+.topnav a:hover { color: var(--parchment); border-bottom-color: var(--brass); }
+
+/* ---------------------------------------------------------------- */
+/* Header                                                            */
+/* ---------------------------------------------------------------- */
+header.page { padding: 3.5rem 0 2.5rem; }
+header.page h1 {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: clamp(2rem, 4.5vw, 3rem); line-height: 1.08;
+  margin: 0 0 0.75rem; letter-spacing: -0.02em;
+}
+header.page .lede { color: var(--parchment-dim); font-size: 1.02rem; max-width: 62ch; margin: 0 0 1.5rem; }
+.meta-line {
+  display: flex; gap: 0.6rem 1.4rem; flex-wrap: wrap;
+  font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- */
+/* Shared blocks                                                     */
+/* ---------------------------------------------------------------- */
+section { padding-top: 3.25rem; }
+h2 {
+  font-family: var(--font-display); font-size: 1.5rem; font-weight: 650;
+  margin: 0 0 0.4rem; letter-spacing: -0.01em;
+}
+h2 .num {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--brass);
+  letter-spacing: 0.14em; display: block; margin-bottom: 0.35rem; font-weight: 500;
+}
+.section-lede { color: var(--muted); margin: 0 0 1.5rem; max-width: 68ch; font-size: 0.92rem; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+.card + .card { margin-top: 1.25rem; }
+.card h3 {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--muted); margin: 0 0 1.1rem; font-weight: 600;
+}
+.mono { font-family: var(--font-mono); }
+.dim { color: var(--muted); }
+
+.tag {
+  display: inline-block; font-family: var(--font-mono); font-size: 0.6rem;
+  letter-spacing: 0.1em; text-transform: uppercase; padding: 0.12rem 0.4rem;
+  border-radius: 4px; vertical-align: middle;
+}
+.tag.new { background: rgba(217, 164, 65, 0.18); color: var(--brass-strong); }
+
+/* ---------------------------------------------------------------- */
+/* Stat tiles                                                        */
+/* ---------------------------------------------------------------- */
+.tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.9rem; margin-top: 2rem;
+}
+.tile {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-m); padding: 1.05rem 1.1rem;
+}
+.tile .label {
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--muted); margin-bottom: 0.45rem;
+}
+.tile .value { font-size: 2rem; font-weight: 600; line-height: 1; color: var(--parchment); }
+.tile .foot { font-size: 0.72rem; color: var(--muted); margin-top: 0.4rem; font-family: var(--font-mono); }
+
+/* ---------------------------------------------------------------- */
+/* Layer diagram                                                     */
+/* ---------------------------------------------------------------- */
+.layer {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-m); padding: 1.1rem 1.25rem;
+  display: grid; grid-template-columns: 168px 1fr; gap: 1.25rem;
+}
+.layer .rail .name { font-weight: 600; font-size: 0.95rem; margin-bottom: 0.15rem; }
+.layer .rail .what { font-size: 0.75rem; color: var(--muted); line-height: 1.4; }
+.layer .rail .count { font-family: var(--font-mono); font-size: 0.68rem; color: var(--muted); margin-top: 0.5rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; align-content: flex-start; }
+.chip {
+  background: var(--panel-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 0.45rem 0.6rem; min-width: 148px;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.chip:hover { border-color: var(--brass); transform: translateY(-1px); }
+.chip .file { font-family: var(--font-mono); font-size: 0.76rem; color: var(--parchment); }
+.chip .role { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; }
+.chip .lines { font-family: var(--font-mono); font-size: 0.64rem; color: var(--muted); }
+.chip.is-new { border-color: rgba(217, 164, 65, 0.45); background: rgba(217, 164, 65, 0.07); }
+
+.flow-arrow {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.5rem 0 0.5rem 1rem; color: var(--muted);
+  font-family: var(--font-mono); font-size: 0.7rem;
+}
+.flow-arrow::before {
+  content: ''; width: 1px; height: 22px; background: var(--border); margin-left: 82px;
+}
+.flow-arrow span { border-left: 1px solid transparent; }
+
+/* dim-existing mode */
+body.focus-new .chip:not(.is-new),
+body.focus-new .row:not(.is-new),
+body.focus-new .api-row:not(.is-new),
+body.focus-new .schema:not(.is-new) { opacity: 0.34; }
+
+.toggle {
+  display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  font-size: 0.78rem; color: var(--muted); background: var(--panel-alt);
+  border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 0.85rem;
+}
+.toggle:hover { color: var(--parchment); border-color: var(--brass); }
+.toggle input { accent-color: var(--brass); margin: 0; }
+
+/* ---------------------------------------------------------------- */
+/* Pipeline                                                          */
+/* ---------------------------------------------------------------- */
+.pipeline {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 0.5rem;
+}
+.pipeline.vertical { grid-template-columns: 1fr; }
+.step {
+  background: var(--panel-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 0.8rem 0.85rem; position: relative;
+}
+.step + .step::before {
+  content: '›'; position: absolute; left: -0.47rem; top: 50%; transform: translateY(-50%);
+  color: var(--border); font-size: 0.9rem; line-height: 1;
+}
+.pipeline.vertical .step + .step::before { content: none; }
+.step .n {
+  font-family: var(--font-mono); font-size: 0.62rem; color: var(--brass);
+  letter-spacing: 0.1em; margin-bottom: 0.3rem;
+}
+.step .t { font-weight: 600; font-size: 0.85rem; margin-bottom: 0.25rem; }
+.step .d { font-size: 0.75rem; color: var(--muted); line-height: 1.45; }
+.step.branch { border-style: dashed; }
+.arrow { align-self: center; color: var(--border); font-size: 1.1rem; }
+
+.callout {
+  margin-top: 1.1rem; padding: 0.85rem 1rem; border-radius: var(--radius-s);
+  background: rgba(79, 163, 150, 0.08); border: 1px solid rgba(79, 163, 150, 0.3);
+  font-size: 0.85rem; color: var(--parchment-dim);
+}
+.callout strong { color: var(--teal-strong); font-weight: 600; }
+
+/* ---------------------------------------------------------------- */
+/* Tables                                                            */
+/* ---------------------------------------------------------------- */
+/* long mono strings (message kinds, endpoint paths, code chips) wrap instead of
+   pushing the page sideways on a narrow screen */
+td, th, .step .d, .callout, .list-tight li { overflow-wrap: anywhere; }
+code { overflow-wrap: anywhere; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th {
+  text-align: left; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--muted); font-weight: 600; padding: 0 0.6rem 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+td { padding: 0.6rem 0.6rem 0.6rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+td.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.check { color: var(--teal-strong); font-weight: 600; }
+.dash { color: var(--border); }
+
+.pill {
+  display: inline-block; font-family: var(--font-mono); font-size: 0.64rem;
+  text-transform: uppercase; letter-spacing: 0.06em; padding: 0.18rem 0.45rem;
+  border-radius: 4px; background: var(--panel-raised); color: var(--parchment-dim);
+}
+.pill.get { background: rgba(79, 163, 150, 0.18); color: var(--teal-strong); }
+.pill.post { background: rgba(217, 164, 65, 0.18); color: var(--brass-strong); }
+.pill.patch { background: rgba(140, 150, 170, 0.2); color: var(--parchment-dim); }
+.pill.delete { background: rgba(193, 87, 63, 0.18); color: var(--clay-strong); }
+.role-badge {
+  display: inline-block; font-family: var(--font-mono); font-size: 0.64rem;
+  text-transform: uppercase; letter-spacing: 0.06em; padding: 0.18rem 0.45rem; border-radius: 4px;
+  background: rgba(140, 150, 170, 0.18); color: var(--muted);
+}
+.role-badge.admin { background: rgba(217, 164, 65, 0.18); color: var(--brass-strong); }
+.role-badge.provider { background: rgba(79, 163, 150, 0.18); color: var(--teal-strong); }
+.role-badge.client { background: rgba(140, 150, 170, 0.22); color: var(--parchment-dim); }
+
+/* ---------------------------------------------------------------- */
+/* Lines-of-code chart                                               */
+/* ---------------------------------------------------------------- */
+.chart { --labelw: 210px; --valw: 58px; --gap: 14px; position: relative; padding-bottom: 0.5rem; }
+.gridlines {
+  position: absolute; top: 0; bottom: 34px;
+  left: calc(var(--labelw) + var(--gap)); right: calc(var(--valw) + var(--gap));
+  display: flex; justify-content: space-between; pointer-events: none;
+}
+.gridlines i { width: 1px; background: var(--panel-alt); }
+.rows { position: relative; }
+.group-head {
+  display: grid; grid-template-columns: var(--labelw) 1fr var(--valw); gap: var(--gap);
+  align-items: baseline; margin: 1.25rem 0 0.6rem;
+}
+.group-head:first-child { margin-top: 0; }
+.group-head .g {
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--parchment-dim); font-weight: 600;
+}
+.group-head .sum {
+  grid-column: 3; font-family: var(--font-mono); font-size: 0.68rem;
+  color: var(--muted); text-align: right; font-variant-numeric: tabular-nums;
+}
+.row {
+  display: grid; grid-template-columns: var(--labelw) 1fr var(--valw); gap: var(--gap);
+  align-items: center; padding: 3px 0; border-radius: 4px;
+}
+.row:hover { background: rgba(255, 255, 255, 0.025); }
+.row .name {
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--parchment-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row .track { height: 14px; position: relative; display: block; }
+.row .bar {
+  display: block; height: 14px; border-radius: 0 4px 4px 0;
+  background: var(--series-existing); min-width: 2px; transition: filter 120ms ease;
+}
+.row.is-new .bar { background: var(--series-new); }
+.row:hover .bar { filter: brightness(1.15); }
+.row .val {
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--muted);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.axis {
+  display: grid; grid-template-columns: var(--labelw) 1fr var(--valw); gap: var(--gap);
+  margin-top: 0.55rem;
+}
+.axis .ticks { display: flex; justify-content: space-between; }
+.axis .ticks span {
+  font-family: var(--font-mono); font-size: 0.64rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; transform: translateX(-50%);
+}
+.axis .ticks span:first-child { transform: none; }
+.axis .ticks span:last-child { transform: translateX(-100%); }
+.legend { display: flex; gap: 1.1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.legend .key { display: flex; align-items: center; gap: 0.45rem; font-size: 0.76rem; color: var(--muted); }
+.legend .swatch { width: 12px; height: 12px; border-radius: 3px; }
+
+#tip {
+  position: fixed; z-index: 100; pointer-events: none; opacity: 0;
+  transition: opacity 90ms ease; background: var(--panel-raised);
+  border: 1px solid var(--border); border-radius: var(--radius-s);
+  padding: 0.55rem 0.7rem; box-shadow: 0 12px 28px -10px rgba(0,0,0,0.7); max-width: 260px;
+}
+#tip .tf { font-family: var(--font-mono); font-size: 0.74rem; color: var(--parchment); }
+#tip .tr { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+#tip .tv { font-family: var(--font-mono); font-size: 0.7rem; color: var(--brass-strong); margin-top: 0.3rem; }
+
+/* ---------------------------------------------------------------- */
+/* Schema                                                            */
+/* ---------------------------------------------------------------- */
+.schemas { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+.schema {
+  background: var(--panel-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-s); padding: 0.9rem 1rem;
+}
+.schema.is-new { border-color: rgba(217, 164, 65, 0.45); }
+.schema .tname {
+  font-family: var(--font-mono); font-size: 0.82rem; color: var(--brass-strong);
+  margin-bottom: 0.55rem; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+}
+.schema ul { list-style: none; margin: 0; padding: 0; }
+.schema li {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--parchment-dim);
+  padding: 0.14rem 0; display: flex; justify-content: space-between; gap: 0.6rem;
+}
+.schema li .t { color: var(--muted); font-size: 0.64rem; }
+.schema .note {
+  margin-top: 0.6rem; padding-top: 0.55rem; border-top: 1px solid var(--border);
+  font-size: 0.7rem; color: var(--muted); line-height: 1.4;
+}
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.list-tight { margin: 0; padding-left: 1.1rem; color: var(--parchment-dim); font-size: 0.87rem; }
+.list-tight li { margin-bottom: 0.45rem; }
+.list-tight code, td code, p code {
+  font-family: var(--font-mono); font-size: 0.85em;
+  background: var(--panel-alt); padding: 0.08rem 0.3rem; border-radius: 3px; color: var(--parchment);
+}
+
+footer.page {
+  margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 0.8rem; display: flex; gap: 1.5rem;
+  flex-wrap: wrap; justify-content: space-between;
+}
+
+@media (max-width: 860px) {
+  .layer { grid-template-columns: 1fr; }
+  .flow-arrow::before { margin-left: 0; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .chart { --labelw: 130px; --valw: 46px; --gap: 10px; }
+  .topnav { display: none; }
+}
+@media (max-width: 620px) {
+  /* the message-kind column is supporting detail — drop it so the three
+     columns that carry the point get room instead of breaking mid-word */
+  .trigger-table th:nth-child(4), .trigger-table td:nth-child(4) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="mark">Almanac</span>
+      <span class="sub">architecture</span>
+    </div>
+    <nav class="topnav">
+      <a href="#stack">Stack</a>
+      <a href="#email">Email component</a>
+      <a href="#code">Codebase</a>
+      <a href="#data">Data model</a>
+      <a href="#api">API</a>
+      <a href="#config">Config</a>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+<header class="page">
+  <h1>Every component, and how the mail gets out.</h1>
+  <p class="lede">
+    Almanac is a multi-role appointment booking platform — Flask and JWT on the back,
+    a vanilla single-page frontend served by the same app. This page maps every file in
+    it, and takes the newest piece, the automatic email notifications, apart.
+  </p>
+  <div class="meta-line">
+    <span>18 files · 3,217 lines</span>
+    <span>SQLite ⇄ Postgres</span>
+    <span>commit <a href="https://github.com/luke-zhang-cs-py/Appointment-Booking-Platform/commit/b0a26d3">b0a26d3</a></span>
+    <span>4 September 2026</span>
+  </div>
+  <div class="tiles">
+    <div class="tile">
+      <div class="label">Python + JS</div>
+      <div class="value">3,217</div>
+      <div class="foot">lines across 18 files</div>
+    </div>
+    <div class="tile">
+      <div class="label">API endpoints</div>
+      <div class="value">19</div>
+      <div class="foot">17 behind a JWT</div>
+    </div>
+    <div class="tile">
+      <div class="label">Database tables</div>
+      <div class="value">5</div>
+      <div class="foot">2 unique guards</div>
+    </div>
+    <div class="tile">
+      <div class="label">Automatic emails</div>
+      <div class="value">8</div>
+      <div class="foot">from 5 triggers</div>
+    </div>
+    <div class="tile">
+      <div class="label">Runtime deps</div>
+      <div class="value">2</div>
+      <div class="foot">Flask · PyJWT</div>
+    </div>
+  </div>
+</header>
+
+<!-- ================================================================ -->
+<section id="stack">
+  <h2><span class="num">01</span>The stack, top to bottom</h2>
+  <p class="section-lede">
+    Each band below is one layer of the app. A request enters at the top and falls
+    straight through; nothing skips a layer, and nothing below the routes knows what
+    HTTP is.
+  </p>
+
+  <div style="margin-bottom:1.25rem;">
+    <label class="toggle">
+      <input type="checkbox" id="focus-new">
+      Highlight only what the email component added
+    </label>
+  </div>
+
+  <div class="layer">
+    <div class="rail">
+      <div class="name">Interface</div>
+      <div class="what">One HTML shell; the dashboard is drawn in JavaScript per role.</div>
+      <div class="count">1,381 lines · 4 files</div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-tip="static/js/app.js" data-role="SPA routing + one renderer per dashboard view" data-lines="705">
+        <div class="file">static/js/app.js</div><div class="role">Routing · 6 dashboard views</div><div class="lines">705 lines</div>
+      </div>
+      <div class="chip" data-tip="static/css/style.css" data-role="Design system — the departure-board identity" data-lines="545">
+        <div class="file">static/css/style.css</div><div class="role">Design system</div><div class="lines">545 lines</div>
+      </div>
+      <div class="chip" data-tip="templates/index.html" data-role="SPA shell: auth screen, sidebar, main pane" data-lines="82">
+        <div class="file">templates/index.html</div><div class="role">SPA shell</div><div class="lines">82 lines</div>
+      </div>
+      <div class="chip" data-tip="static/js/api.js" data-role="fetch wrapper: JWT storage + auth headers" data-lines="49">
+        <div class="file">static/js/api.js</div><div class="role">fetch + JWT storage</div><div class="lines">49 lines</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow"><span>↓ &nbsp;fetch /api/… &nbsp;·&nbsp; Authorization: Bearer &lt;token&gt;</span></div>
+
+  <div class="layer">
+    <div class="rail">
+      <div class="name">Application</div>
+      <div class="what">The factory that wires everything together on boot.</div>
+      <div class="count">56 lines · 1 file</div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-tip="app.py" data-role="factory: config → db → mail worker → blueprints → schema → scheduler" data-lines="56">
+        <div class="file">app.py</div><div class="role">config · db · mail worker · blueprints · scheduler</div><div class="lines">56 lines</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow"><span>↓ &nbsp;blueprint dispatch</span></div>
+
+  <div class="layer">
+    <div class="rail">
+      <div class="name">HTTP layer</div>
+      <div class="what">Validates input, checks the token and the role, returns JSON. No business rules live here.</div>
+      <div class="count">459 lines · 5 route modules</div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-tip="routes/appointment_routes.py" data-role="book · list · cancel · complete" data-lines="136">
+        <div class="file">routes/appointment_routes.py</div><div class="role">book · list · cancel · complete</div><div class="lines">136 lines</div>
+      </div>
+      <div class="chip" data-tip="routes/availability_routes.py" data-role="weekly hours, blocked dates, free-slot lookup" data-lines="111">
+        <div class="file">routes/availability_routes.py</div><div class="role">hours · blocks · slots</div><div class="lines">111 lines</div>
+      </div>
+      <div class="chip" data-tip="routes/auth_routes.py" data-role="register · login · me" data-lines="77">
+        <div class="file">routes/auth_routes.py</div><div class="role">register · login · me</div><div class="lines">77 lines</div>
+      </div>
+      <div class="chip is-new" data-tip="routes/email_routes.py" data-role="admin: delivery log, test send, manual reminder run" data-lines="74">
+        <div class="file">routes/email_routes.py <span class="tag new">new</span></div><div class="role">log · test · run reminders</div><div class="lines">74 lines</div>
+      </div>
+      <div class="chip" data-tip="routes/user_routes.py" data-role="provider directory + admin user management" data-lines="61">
+        <div class="file">routes/user_routes.py</div><div class="role">providers · admin users</div><div class="lines">61 lines</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow"><span>↓ &nbsp;plain function calls</span></div>
+
+  <div class="layer">
+    <div class="rail">
+      <div class="name">Domain</div>
+      <div class="what">The actual rules: who you are, when you're free, what gets mailed.</div>
+      <div class="count">925 lines · 4 files</div>
+    </div>
+    <div class="chips">
+      <div class="chip is-new" data-tip="notifications.py" data-role="message templates, triggers, reminder scheduler" data-lines="500">
+        <div class="file">notifications.py <span class="tag new">new</span></div><div class="role">what is mailed, and when</div><div class="lines">500 lines</div>
+      </div>
+      <div class="chip is-new" data-tip="mailer.py" data-role="SMTP/console transport, queue, delivery log" data-lines="252">
+        <div class="file">mailer.py <span class="tag new">new</span></div><div class="role">how it is delivered</div><div class="lines">252 lines</div>
+      </div>
+      <div class="chip" data-tip="calendar_logic.py" data-role="hours − blocks − bookings = free slots" data-lines="93">
+        <div class="file">calendar_logic.py</div><div class="role">free-slot engine</div><div class="lines">93 lines</div>
+      </div>
+      <div class="chip" data-tip="auth.py" data-role="password hashing, JWT, RBAC decorators" data-lines="80">
+        <div class="file">auth.py</div><div class="role">hashing · JWT · RBAC</div><div class="lines">80 lines</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-arrow"><span>↓ &nbsp;db.query() / db.execute() / db.insert()</span></div>
+
+  <div class="layer">
+    <div class="rail">
+      <div class="name">Data &amp; config</div>
+      <div class="what">One abstraction over two databases; every setting comes from the environment.</div>
+      <div class="count">396 lines · 3 files</div>
+    </div>
+    <div class="chips">
+      <div class="chip" data-tip="database.py" data-role="SQLite/Postgres abstraction + schema" data-lines="306">
+        <div class="file">database.py</div><div class="role">SQLite ⇄ Postgres · schema</div><div class="lines">306 lines</div>
+      </div>
+      <div class="chip" data-tip="config.py" data-role="every setting read from the environment" data-lines="58">
+        <div class="file">config.py</div><div class="role">environment settings</div><div class="lines">58 lines</div>
+      </div>
+      <div class="chip" data-tip="seed_data.py" data-role="creates the first admin account" data-lines="32">
+        <div class="file">seed_data.py</div><div class="role">first admin account</div><div class="lines">32 lines</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="email">
+  <h2><span class="num">02</span>The email component</h2>
+  <p class="section-lede">
+    Five things that happen in the app cause mail to go out on their own. Nobody
+    presses a send button, and no request ever waits for a mail server.
+  </p>
+
+  <div class="card">
+    <h3>Who gets mailed, and when</h3>
+    <table class="trigger-table">
+      <thead>
+        <tr><th>Trigger</th><th>Client</th><th>Provider</th><th>Message kinds</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>An account is created</td>
+          <td colspan="2" style="text-align:center;"><span class="check">✓</span> <span class="dim">the new user, whoever they are</span></td>
+          <td class="mono dim">welcome</td>
+        </tr>
+        <tr>
+          <td>A client books a slot</td>
+          <td><span class="check">✓</span> confirmation</td>
+          <td><span class="check">✓</span> heads-up</td>
+          <td class="mono dim">booked_client · booked_provider</td>
+        </tr>
+        <tr>
+          <td>An appointment is cancelled</td>
+          <td><span class="check">✓</span> notice</td>
+          <td><span class="check">✓</span> notice</td>
+          <td class="mono dim">cancelled_client · cancelled_provider</td>
+        </tr>
+        <tr>
+          <td>A provider marks one complete</td>
+          <td><span class="check">✓</span> thank-you</td>
+          <td><span class="dash">—</span></td>
+          <td class="mono dim">completed_client</td>
+        </tr>
+        <tr>
+          <td><code>REMINDER_HOURS_BEFORE</code> the start (default 24 h)</td>
+          <td><span class="check">✓</span> reminder</td>
+          <td><span class="check">✓</span> reminder</td>
+          <td class="mono dim">reminder_client · reminder_provider</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>What happens when one is triggered</h3>
+    <div class="pipeline">
+      <div class="step">
+        <div class="n">01</div><div class="t">Trigger</div>
+        <div class="d">A route calls <code>notifications.notify_booked()</code> and friends — a side effect that swallows its own errors.</div>
+      </div>
+      <div class="step">
+        <div class="n">02</div><div class="t">Render</div>
+        <div class="d">One description of the message produces both halves — plain text and styled HTML — so they can't drift apart.</div>
+      </div>
+      <div class="step">
+        <div class="n">03</div><div class="t">Claim</div>
+        <div class="d">A row is inserted in <code>email_log</code>. The unique index is the gate: if somebody already claimed this message, we stop here.</div>
+      </div>
+      <div class="step">
+        <div class="n">04</div><div class="t">Queue</div>
+        <div class="d">The message goes to a background worker thread. <strong>The HTTP request returns now</strong> — it never waits.</div>
+      </div>
+      <div class="step">
+        <div class="n">05</div><div class="t">Deliver</div>
+        <div class="d">Over SMTP — or printed to the server log when <code>SMTP_HOST</code> is unset, which is the local default.</div>
+      </div>
+      <div class="step">
+        <div class="n">06</div><div class="t">Record</div>
+        <div class="d">The row is marked <code>sent</code>, or <code>failed</code> with the error — and a failed row is retried by the next scan.</div>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>The unique index is the whole de-duplication story.</strong>
+      <code>email_log (appointment_id, kind, recipient)</code> is unique, so two overlapping
+      reminder scans, a double-clicked button, or four web workers running at once all
+      collapse into exactly one message per person per reason.
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>The reminder loop</h3>
+      <div class="pipeline vertical">
+        <div class="step">
+          <div class="n">every REMINDER_SCAN_MINUTES</div>
+          <div class="t">Scheduler thread</div>
+          <div class="d">A daemon thread started by the app factory. Under Flask's reloader only the child process owns it, so it never runs twice.</div>
+        </div>
+        <div class="step">
+          <div class="n">↓</div>
+          <div class="t">send_due_reminders()</div>
+          <div class="d">One SQL window query: confirmed appointments whose <code>date || ' ' || start_time</code> falls between now and the cutoff.</div>
+        </div>
+        <div class="step">
+          <div class="n">↓</div>
+          <div class="t">Straight into the pipeline above</div>
+          <div class="d">Claim, queue, deliver, record — the same six steps, with the same guarantee that nobody is reminded twice.</div>
+        </div>
+      </div>
+      <div class="callout" style="background:rgba(217,164,65,0.07);border-color:rgba(217,164,65,0.3);">
+        <strong style="color:var(--brass-strong);">Prefer cron?</strong>
+        Set <code>REMINDERS_ENABLED=0</code> and point it at
+        <code>POST /api/admin/emails/run-reminders</code> instead. Same function, same guarantees.
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>How it holds up</h3>
+      <ul class="list-tight">
+        <li><strong>Nothing blocks on the mail server.</strong> Delivery happens on a worker thread; a refused SMTP connection is a logged <code>failed</code> row, never a 500 for the person who just booked.</li>
+        <li><strong>Nobody is mailed twice.</strong> The claim-before-send pattern plus a unique index, rather than a flag someone has to remember to check.</li>
+        <li><strong>Failures come back.</strong> A <code>failed</code> row is re-claimed by the next scan, so a mail outage delays reminders instead of swallowing them.</li>
+        <li><strong>Zero setup locally.</strong> No SMTP server? The message prints to the terminal running <code>python app.py</code>, so the whole flow is watchable on a laptop.</li>
+        <li><strong>No new dependencies.</strong> <code>smtplib</code> and <code>email.message</code> from the standard library — the deploy story doesn't change.</li>
+        <li><strong>Visible.</strong> Admins get an <strong>Email log</strong> view: what was sent, to whom, whether it landed, plus a test-send button for checking credentials.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="code">
+  <h2><span class="num">03</span>Where the code actually is</h2>
+  <p class="section-lede">
+    Every file, by length, grouped by layer. The email component added three modules
+    totalling 826 lines; the rest of the change was wiring — 1,289 insertions in all. (17 bars: the 18th file, <code>routes/__init__.py</code>, is an empty package marker.)
+  </p>
+
+  <div class="card">
+    <div class="legend">
+      <span class="key"><span class="swatch" style="background:var(--series-new)"></span> New in this change</span>
+      <span class="key"><span class="swatch" style="background:var(--series-existing)"></span> Existing code</span>
+    </div>
+
+    <div class="chart">
+      <div class="gridlines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="rows" id="loc-rows"></div>
+      <div class="axis">
+        <span></span>
+        <div class="ticks"><span>0</span><span>200</span><span>400</span><span>600</span><span>800</span></div>
+        <span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="data">
+  <h2><span class="num">04</span>Data model</h2>
+  <p class="section-lede">
+    Five tables. Two of them carry a partial unique index that enforces a rule the
+    application would otherwise have to remember — no double-booking, and no
+    duplicate mail.
+  </p>
+  <div class="schemas">
+    <div class="schema">
+      <div class="tname">users</div>
+      <ul>
+        <li><span>id</span><span class="t">pk</span></li>
+        <li><span>name</span><span class="t">text</span></li>
+        <li><span>email</span><span class="t">unique</span></li>
+        <li><span>password_hash</span><span class="t">text</span></li>
+        <li><span>role</span><span class="t">admin|provider|client</span></li>
+        <li><span>specialty</span><span class="t">text?</span></li>
+        <li><span>is_active</span><span class="t">bool</span></li>
+        <li><span>created_at</span><span class="t">ts</span></li>
+      </ul>
+    </div>
+    <div class="schema">
+      <div class="tname">availability</div>
+      <ul>
+        <li><span>id</span><span class="t">pk</span></li>
+        <li><span>provider_id</span><span class="t">→ users</span></li>
+        <li><span>day_of_week</span><span class="t">0–6</span></li>
+        <li><span>start_time</span><span class="t">HH:MM</span></li>
+        <li><span>end_time</span><span class="t">HH:MM</span></li>
+        <li><span>slot_minutes</span><span class="t">int</span></li>
+      </ul>
+      <div class="note">A provider's recurring weekly hours.</div>
+    </div>
+    <div class="schema">
+      <div class="tname">blocked_slots</div>
+      <ul>
+        <li><span>id</span><span class="t">pk</span></li>
+        <li><span>provider_id</span><span class="t">→ users</span></li>
+        <li><span>date</span><span class="t">YYYY-MM-DD</span></li>
+        <li><span>start_time</span><span class="t">HH:MM?</span></li>
+        <li><span>end_time</span><span class="t">HH:MM?</span></li>
+        <li><span>reason</span><span class="t">text?</span></li>
+      </ul>
+      <div class="note">No start/end means the whole day is off.</div>
+    </div>
+    <div class="schema">
+      <div class="tname">appointments</div>
+      <ul>
+        <li><span>id</span><span class="t">pk</span></li>
+        <li><span>provider_id</span><span class="t">→ users</span></li>
+        <li><span>client_id</span><span class="t">→ users</span></li>
+        <li><span>date</span><span class="t">YYYY-MM-DD</span></li>
+        <li><span>start_time</span><span class="t">HH:MM</span></li>
+        <li><span>end_time</span><span class="t">HH:MM</span></li>
+        <li><span>status</span><span class="t">confirmed|cancelled|completed</span></li>
+        <li><span>notes</span><span class="t">text?</span></li>
+      </ul>
+      <div class="note">UNIQUE (provider_id, date, start_time) WHERE status = 'confirmed' — the race-condition guard.</div>
+    </div>
+    <div class="schema is-new">
+      <div class="tname">email_log <span class="tag new">new</span></div>
+      <ul>
+        <li><span>id</span><span class="t">pk</span></li>
+        <li><span>kind</span><span class="t">welcome, reminder_client…</span></li>
+        <li><span>recipient</span><span class="t">email</span></li>
+        <li><span>subject</span><span class="t">text</span></li>
+        <li><span>appointment_id</span><span class="t">→ appointments?</span></li>
+        <li><span>user_id</span><span class="t">→ users?</span></li>
+        <li><span>status</span><span class="t">queued|sent|failed</span></li>
+        <li><span>error</span><span class="t">text?</span></li>
+        <li><span>created_at / sent_at</span><span class="t">ts</span></li>
+      </ul>
+      <div class="note">UNIQUE (appointment_id, kind, recipient) WHERE appointment_id IS NOT NULL — the de-duplication gate.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="api">
+  <h2><span class="num">05</span>API surface</h2>
+  <p class="section-lede">
+    19 endpoints. Everything except register and login needs
+    <code>Authorization: Bearer &lt;token&gt;</code>, and most also need a role.
+  </p>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:88px;">Method</th><th>Path</th><th style="width:210px;">Who</th></tr></thead>
+      <tbody id="api-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="config">
+  <h2><span class="num">06</span>Configuration</h2>
+  <p class="section-lede">
+    Every setting is an environment variable with a working default, so the same code
+    runs on a laptop and in the cloud. Nothing below needs to be set to start the app.
+  </p>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:230px;">Variable</th><th style="width:230px;">Default</th><th>What it does</th></tr></thead>
+      <tbody id="config-rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section id="checks">
+  <h2><span class="num">07</span>What was verified</h2>
+  <p class="section-lede">
+    The email component was exercised end to end against a throwaway database and a
+    fake SMTP server, not just read over.
+  </p>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Checks that passed</h3>
+      <ul class="list-tight">
+        <li>A full run — register → book → reminder scan → complete → cancel — produced exactly the 11 expected <code>email_log</code> rows, all <code>sent</code>.</li>
+        <li>A second reminder scan queued <strong>0</strong>: nobody is reminded twice.</li>
+        <li>Multipart text + HTML confirmed on the wire against a fake SMTP server, with correct <code>From</code>, <code>To</code>, and <code>Auto-Submitted</code> headers.</li>
+        <li>Unreachable SMTP → row marked <code>failed</code> → retried on the next pass → suppressed once <code>sent</code>, leaving one row.</li>
+        <li>A non-admin gets <strong>403</strong> from <code>/api/admin/emails</code>.</li>
+        <li>Exactly one mailer worker and one scheduler thread, no duplicates.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Fixes made along the way</h3>
+      <ul class="list-tight">
+        <li><code>db.insert()</code> — the booking route relied on <code>lastrowid</code>, which is <code>None</code> on Postgres. Now uses <code>RETURNING id</code> there.</li>
+        <li><code>db.rollback()</code> — Postgres refuses every further statement on a connection after an error, so the <code>IntegrityError</code> branches need it.</li>
+        <li><strong>JWT <code>sub</code> must be a string.</strong> PyJWT ≥ 2.10 rejects the integer, so <em>every</em> authenticated request was failing with "Invalid token" until <code>auth.py</code> encoded it as text.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer class="page">
+  <span>Almanac · <span class="mono">python app.py</span> → <span class="mono">http://localhost:5000</span></span>
+  <span>This page: <span class="mono">/static/architecture.html</span></span>
+</footer>
+
+</div>
+
+<div id="tip" role="tooltip" aria-hidden="true">
+  <div class="tf"></div><div class="tr"></div><div class="tv"></div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* Data                                                                */
+/* ------------------------------------------------------------------ */
+const TOTAL_LINES = 3217;
+const SCALE_MAX = 800;   // axis runs 0–800 so the ticks land on round numbers
+
+const GROUPS = [
+  { name: "Interface", files: [
+    ["static/js/app.js",       705, "SPA routing + one renderer per dashboard view", false],
+    ["static/css/style.css",   545, "Design system — the departure-board identity",  false],
+    ["templates/index.html",    82, "SPA shell: auth screen, sidebar, main pane",    false],
+    ["static/js/api.js",        49, "fetch wrapper: JWT storage + auth headers",     false],
+  ]},
+  { name: "Application & HTTP", files: [
+    ["routes/appointment_routes.py", 136, "book · list · cancel · complete",              false],
+    ["routes/availability_routes.py",111, "weekly hours, blocked dates, free slots",      false],
+    ["routes/auth_routes.py",         77, "register · login · me",                        false],
+    ["routes/email_routes.py",        74, "admin delivery log, test send, reminder run",  true ],
+    ["routes/user_routes.py",         61, "provider directory + admin user management",   false],
+    ["app.py",                        56, "app factory: wires every layer together",      false],
+  ]},
+  { name: "Domain", files: [
+    ["notifications.py",  500, "message templates, triggers, reminder scheduler", true ],
+    ["mailer.py",         252, "SMTP/console transport, queue, delivery log",     true ],
+    ["calendar_logic.py",  93, "hours − blocks − bookings = free slots",          false],
+    ["auth.py",            80, "password hashing, JWT, RBAC decorators",          false],
+  ]},
+  { name: "Data & config", files: [
+    ["database.py",  306, "SQLite/Postgres abstraction + schema", false],
+    ["config.py",     58, "every setting read from the environment", false],
+    ["seed_data.py",  32, "creates the first admin account", false],
+  ]},
+];
+
+const API = [
+  ["POST",   "/api/auth/register",                   [["","anyone"]]],
+  ["POST",   "/api/auth/login",                      [["","anyone"]]],
+  ["GET",    "/api/auth/me",                         [["","any signed-in"]]],
+  ["GET",    "/api/providers",                       [["","any signed-in"]]],
+  ["GET",    "/api/providers/&lt;id&gt;/slots",      [["","any signed-in"]]],
+  ["GET",    "/api/availability/mine",               [["provider","provider"]]],
+  ["POST",   "/api/availability/mine",               [["provider","provider"]]],
+  ["DELETE", "/api/availability/mine/&lt;id&gt;",    [["provider","provider"]]],
+  ["POST",   "/api/availability/mine/block",         [["provider","provider"]]],
+  ["DELETE", "/api/availability/mine/block/&lt;id&gt;", [["provider","provider"]]],
+  ["POST",   "/api/appointments",                    [["client","client"]]],
+  ["GET",    "/api/appointments/mine",               [["","any signed-in"]], false, "scoped by role"],
+  ["POST",   "/api/appointments/&lt;id&gt;/cancel",  [["","owner"],["admin","admin"]]],
+  ["POST",   "/api/appointments/&lt;id&gt;/complete",[["provider","provider"],["admin","admin"]]],
+  ["GET",    "/api/admin/users",                     [["admin","admin"]]],
+  ["PATCH",  "/api/admin/users/&lt;id&gt;",          [["admin","admin"]]],
+  ["GET",    "/api/admin/emails",                    [["admin","admin"]], true],
+  ["POST",   "/api/admin/emails/test",               [["admin","admin"]], true],
+  ["POST",   "/api/admin/emails/run-reminders",      [["admin","admin"]], true],
+];
+
+const CONFIG = [
+  ["SECRET_KEY",            "dev-secret-change-me…",            "Signs the JWTs. Replace it anywhere real."],
+  ["JWT_EXP_HOURS",         "24",                                "How long a login token stays valid."],
+  ["DATABASE_URL",          "sqlite:///appointments.db",         "Swap for a postgres:// URL and the backend switches — no code change."],
+  ["PORT / FLASK_DEBUG",    "5000 / 1",                          "Dev server settings."],
+  ["MAIL_ENABLED",          "1",                                 "Master switch for every outgoing message.", true],
+  ["MAIL_FROM",             "Almanac &lt;no-reply@almanac.local&gt;", "The From header on every message.", true],
+  ["MAIL_REPLY_TO",         "—",                                 "Optional Reply-To, if replies should reach a person.", true],
+  ["SMTP_HOST",             "empty → console",                   "Unset means messages print to the server log. Set it and mail is delivered.", true],
+  ["SMTP_PORT",             "587",                               "587 with STARTTLS, or 465 with implicit TLS.", true],
+  ["SMTP_USERNAME / _PASSWORD", "—",                             "Credentials for the mail provider.", true],
+  ["SMTP_USE_TLS / _USE_SSL", "1 / 0",                           "STARTTLS on 587 (default), or implicit TLS on 465.", true],
+  ["SMTP_TIMEOUT",          "20",                                "Seconds before a stuck mail server gives up.", true],
+  ["APP_BASE_URL",          "http://localhost:5000",             "Used to build the links inside emails.", true],
+  ["REMINDERS_ENABLED",     "1",                                 "Set to 0 to drive reminders from cron instead.", true],
+  ["REMINDER_HOURS_BEFORE", "24",                                "How far ahead a reminder goes out.", true],
+  ["REMINDER_SCAN_MINUTES", "15",                                "How often the scheduler thread looks for due reminders.", true],
+];
+
+/* ------------------------------------------------------------------ */
+/* Render: lines-of-code chart                                         */
+/* ------------------------------------------------------------------ */
+const rowsEl = document.getElementById("loc-rows");
+for (const group of GROUPS) {
+  const subtotal = group.files.reduce((sum, f) => sum + f[1], 0);
+
+  const head = document.createElement("div");
+  head.className = "group-head";
+  head.innerHTML = `<span class="g">${group.name}</span><span></span>` +
+                   `<span class="sum">${subtotal.toLocaleString()}</span>`;
+  rowsEl.append(head);
+
+  for (const [path, lines, role, isNew] of group.files) {
+    const row = document.createElement("div");
+    row.className = "row" + (isNew ? " is-new" : "");
+    row.tabIndex = 0;
+    row.setAttribute("aria-label", `${path}, ${lines} lines${isNew ? ", new in this change" : ""}`);
+    row.dataset.tip = path;
+    row.dataset.role = role;
+    row.dataset.lines = lines;
+    row.innerHTML =
+      `<span class="name" title="${path}">${path}</span>` +
+      `<span class="track"><span class="bar" style="width:${(lines / SCALE_MAX * 100).toFixed(2)}%"></span></span>` +
+      `<span class="val">${lines}</span>`;
+    rowsEl.append(row);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Render: API + config tables                                         */
+/* ------------------------------------------------------------------ */
+document.getElementById("api-rows").innerHTML = API.map(([method, path, who, isNew, note]) => `
+  <tr class="api-row${isNew ? " is-new" : ""}">
+    <td><span class="pill ${method.toLowerCase()}">${method}</span></td>
+    <td class="mono">${path}${isNew ? ' <span class="tag new">new</span>' : ""}</td>
+    <td>${who.map(([cls, label]) => `<span class="role-badge ${cls}">${label}</span>`).join(" ")}${
+      note ? ` <span class="dim" style="font-size:0.78rem">${note}</span>` : ""}</td>
+  </tr>`).join("");
+
+document.getElementById("config-rows").innerHTML = CONFIG.map(([name, def, what, isMail]) => `
+  <tr>
+    <td class="mono" style="color:${isMail ? "var(--brass-strong)" : "var(--parchment-dim)"}">${name}</td>
+    <td class="mono dim">${def}</td>
+    <td class="dim">${what}</td>
+  </tr>`).join("");
+
+/* ------------------------------------------------------------------ */
+/* Tooltip (hover + keyboard focus show the same thing)                */
+/* ------------------------------------------------------------------ */
+const tip = document.getElementById("tip");
+const tf = tip.querySelector(".tf"), tr = tip.querySelector(".tr"), tv = tip.querySelector(".tv");
+
+function showTip(el, x, y) {
+  const lines = Number(el.dataset.lines);
+  tf.textContent = el.dataset.tip;
+  tr.textContent = el.dataset.role || "";
+  tv.textContent = `${lines} lines · ${(lines / TOTAL_LINES * 100).toFixed(1)}% of the codebase`;
+  tip.style.opacity = "1";
+  const pad = 14;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(x + pad, window.innerWidth - w - pad) + "px";
+  tip.style.top = Math.max(pad, Math.min(y + pad, window.innerHeight - h - pad)) + "px";
+}
+function hideTip() { tip.style.opacity = "0"; }
+
+document.querySelectorAll("[data-tip]").forEach((el) => {
+  el.addEventListener("mousemove", (e) => showTip(el, e.clientX, e.clientY));
+  el.addEventListener("mouseleave", hideTip);
+  el.addEventListener("focus", () => {
+    const r = el.getBoundingClientRect();
+    showTip(el, r.left, r.bottom);
+  });
+  el.addEventListener("blur", hideTip);
+});
+
+/* ------------------------------------------------------------------ */
+/* "Highlight only what's new" toggle                                  */
+/* ------------------------------------------------------------------ */
+document.getElementById("focus-new").addEventListener("change", (e) => {
+  document.body.classList.toggle("focus-new", e.target.checked);
+});
+</script>
+</body>
+</html>

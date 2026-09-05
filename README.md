@@ -42,6 +42,7 @@ routes/
   appointment_routes.py    book / list / cancel / complete appointments
   email_routes.py          admin delivery log, test send, manual reminder run
 templates/index.html       SPA shell
+static/architecture.html   Visual overview of every component (open it in a browser)
 static/css/style.css       Design system ("departure board" visual identity)
 static/js/api.js           Fetch wrapper (JWT storage + auth headers)
 static/js/app.js           SPA routing + role-specific dashboard rendering
@@ -65,6 +66,10 @@ dev JWT secret). For anything beyond local testing, copy `.env.example` to
 Sign up as a **client** or **provider** from the UI, or sign in as the
 seeded admin. A provider needs to add weekly hours under **My schedule**
 before clients can book them.
+
+For a map of the whole system — every file, the email pipeline, the schema,
+the API surface — open `static/architecture.html` in a browser (double-click
+it, or visit `/static/architecture.html` while the app is running).
 
 ## Moving to a cloud database
 
