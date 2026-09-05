@@ -54,6 +54,25 @@ def test_the_running_app_is_not_using_the_placeholder(app):
     assert app.config["SECRET_KEY"] != config.DEV_SECRET_KEY
 
 
+def test_the_server_binds_to_loopback_by_default():
+    """It bound 0.0.0.0, and DEBUG defaults to on -- which put the Werkzeug
+    debugger, an interactive Python console, on every interface of the
+    machine. Anyone on the same network could run code as this process. The
+    other three apps in this family bind to 127.0.0.1; this one did not."""
+    assert config.Config.HOST == "127.0.0.1"
+
+
+def test_binding_wider_stays_possible_on_purpose():
+    import importlib
+    import os
+    os.environ["HOST"] = "0.0.0.0"
+    try:
+        assert importlib.reload(config).Config.HOST == "0.0.0.0"
+    finally:
+        del os.environ["HOST"]
+        importlib.reload(config)
+
+
 # ---------------------------------------------------------------- transport
 
 def test_a_message_is_one_argument():

@@ -81,12 +81,17 @@ requirements.txt
 ```bash
 pip install -r requirements.txt
 python seed_data.py        # creates admin@almanac.local / admin12345
-python app.py               # http://localhost:5000
+python app.py               # http://127.0.0.1:5000
 ```
 
 No `.env` needed to start — sensible defaults kick in (SQLite file,
 dev JWT secret). For anything beyond local testing, copy `.env.example` to
 `.env`, fill in a real `SECRET_KEY`, and load it before running.
+
+The server binds to `127.0.0.1`. It used to bind `0.0.0.0`, which with
+`FLASK_DEBUG` on -- the default -- exposed the Werkzeug debugger, an
+interactive Python console, to everyone on the network. Set `HOST=0.0.0.0`
+when you actually mean it, and turn debug off when you do.
 
 The dev secret is committed, so it is public, and it signs every session
 token. Running with `FLASK_DEBUG=0` and no `SECRET_KEY` set therefore does

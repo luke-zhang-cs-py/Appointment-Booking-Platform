@@ -39,6 +39,12 @@ class Config:
     )
 
     # --- Server -----------------------------------------------------------
+    # Loopback by default. It used to bind 0.0.0.0, which with DEBUG on --
+    # also the default -- put the Werkzeug debugger, an interactive Python
+    # console, on every interface of the machine. Anyone on the same network
+    # could run code as this process. Set HOST=0.0.0.0 deliberately when you
+    # actually want that, and turn DEBUG off when you do.
+    HOST = os.environ.get("HOST", "127.0.0.1")
     PORT = int(os.environ.get("PORT", "5000"))
     DEBUG = os.environ.get("FLASK_DEBUG", "1") == "1"
 
