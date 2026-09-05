@@ -36,6 +36,7 @@ to keep correct.
 
 import logging
 import secrets
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 import database as db
@@ -92,41 +93,88 @@ def new_token():
 
 # ---------------------------------------------------------------- creating
 
-def create_invite(host_id, guest_email, guest_name=None, topic=None,
-                  message=None, duration_min=DEFAULT_DURATION_MIN,
-                  expiry_days=DEFAULT_EXPIRY_DAYS, offering_id=None):
-    """Create an invite. Returns the row. Does not send anything -- the caller
-    decides when to mail, so that a failed send does not lose the invite.
+@dataclass
+class InviteRequest:
+    """The ask, before it has a token or a row.
 
-    Naming an offering makes it the source of truth for length and topic, so
-    an invite cannot drift out of step with the catalogue entry it is for.
+    create_invite() used to take eight parameters, six of them optional, and
+    every caller wrote out the ones it cared about and hoped the rest still
+    defaulted sensibly. They describe one thing, so they are one thing. The
+    validation that used to sit at the top of create_invite lives here too:
+    an InviteRequest that has been checked is a fact about the request, not
+    something the next function has to re-establish.
     """
-    guest_email = (guest_email or "").strip().lower()
-    if "@" not in guest_email or guest_email.startswith("@") or guest_email.endswith("@"):
-        raise InviteError("A valid guest email address is required.")
 
-    offering = None
-    if offering_id is not None:
-        import offerings as offerings_mod
-        offering = offerings_mod.get(offering_id)
-        if not offering or offering["provider_id"] != host_id:
-            raise InviteError("That offering does not belong to you.")
-        duration_min = offering["duration_min"]
-        topic = topic or offering["title"]
+    guest_email: str
+    guest_name: str = None
+    topic: str = None
+    message: str = None
+    duration_min: int = DEFAULT_DURATION_MIN
+    expiry_days: int = DEFAULT_EXPIRY_DAYS
+    offering_id: int = None
 
-    if duration_min not in ALLOWED_DURATIONS and offering is None:
-        raise InviteError(
-            f"Duration must be one of {', '.join(str(d) for d in ALLOWED_DURATIONS)} minutes.")
+    @classmethod
+    def from_payload(cls, body):
+        """Build one from a JSON request body, in the API's casing.
 
-    host = db.query("SELECT * FROM users WHERE id = ?", (host_id,), one=True)
-    if not host:
-        raise InviteError("Host not found.")
+        Raises InviteError rather than ValueError so a route has one kind of
+        failure to catch.
+        """
+        body = body or {}
+        try:
+            duration = int(body.get("duration") or DEFAULT_DURATION_MIN)
+        except (TypeError, ValueError):
+            raise InviteError("Duration must be a number of minutes.")
+        return cls(
+            guest_email=body.get("email"),
+            guest_name=body.get("name"),
+            topic=body.get("topic"),
+            message=body.get("message"),
+            duration_min=duration,
+            offering_id=body.get("offeringId"),
+        )
 
-    # An outstanding invite to the same person is almost always a double-send,
-    # not a deliberate second ask. Hand the existing one back so the host can
-    # nudge it rather than fragmenting the thread across two links.
+    def normalised_email(self):
+        """The address, lowercased and trimmed, or an InviteError.
+
+        Deliberately not a full RFC 5322 parser: the only thing worth
+        rejecting here is an address that cannot be delivered to at all,
+        because the invite is useless without one. Anything subtler is the
+        mail server's job.
+        """
+        email = (self.guest_email or "").strip().lower()
+        if "@" not in email or email.startswith("@") or email.endswith("@"):
+            raise InviteError("A valid guest email address is required.")
+        return email
+
+
+def _apply_offering(request, host_id):
+    """Let a named offering decide the length and the topic.
+
+    The catalogue entry is the source of truth when there is one, so an
+    invite cannot drift out of step with the thing it is an invite to. With
+    no offering, the caller's duration has to stand on its own.
+    """
+    if request.offering_id is None:
+        if request.duration_min not in ALLOWED_DURATIONS:
+            raise InviteError(
+                f"Duration must be one of "
+                f"{', '.join(str(d) for d in ALLOWED_DURATIONS)} minutes.")
+        return request.duration_min, request.topic
+
+    import offerings as offerings_mod
+    offering = offerings_mod.get(request.offering_id)
+    if not offering or offering["provider_id"] != host_id:
+        raise InviteError("That offering does not belong to you.")
+    return offering["duration_min"], request.topic or offering["title"]
+
+
+def _reject_duplicate(host_id, guest_email):
+    """An outstanding invite to the same person is almost always a
+    double-send, not a deliberate second ask. Two live links fragment the
+    thread and the host loses track of which one was answered."""
     existing = db.query(
-        """SELECT * FROM coffee_invites
+        """SELECT id FROM coffee_invites
            WHERE host_id = ? AND guest_email = ? AND status IN ('sent','viewed')
            ORDER BY id DESC""",
         (host_id, guest_email), one=True)
@@ -135,16 +183,31 @@ def create_invite(host_id, guest_email, guest_name=None, topic=None,
             f"There is already an open invite to {guest_email}. "
             f"Nudge or revoke it before sending another.")
 
-    token = new_token()
-    expires = _iso(_now() + timedelta(days=expiry_days))
+
+def create_invite(host_id, request):
+    """Create an invite from an InviteRequest. Returns the row.
+
+    Does not send anything -- the caller decides when to mail, so that a
+    failed send does not lose the invite.
+    """
+    guest_email = request.normalised_email()
+    duration_min, topic = _apply_offering(request, host_id)
+
+    host = db.query("SELECT id FROM users WHERE id = ?", (host_id,), one=True)
+    if not host:
+        raise InviteError("Host not found.")
+
+    _reject_duplicate(host_id, guest_email)
+
+    expires = _iso(_now() + timedelta(days=request.expiry_days))
     invite_id = db.insert(
         """INSERT INTO coffee_invites
            (host_id, guest_email, guest_name, token, topic, message,
             duration_min, offering_id, status, expires_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)""",
-        (host_id, guest_email, (guest_name or "").strip() or None, token,
-         (topic or "").strip() or None, (message or "").strip() or None,
-         duration_min, offering_id, expires))
+        (host_id, guest_email, (request.guest_name or "").strip() or None, new_token(),
+         (topic or "").strip() or None, (request.message or "").strip() or None,
+         duration_min, request.offering_id, expires))
     return get_invite(invite_id)
 
 
@@ -255,14 +318,12 @@ def _find_or_create_guest(email, name):
     return db.query("SELECT * FROM users WHERE email = ?", (email,), one=True)
 
 
-def book(token, date_str, start_time, guest_name=None, note=None):
-    """Take a slot against an invite. Returns (invite, appointment_id).
+def _open_invite_for(token):
+    """The invite this token can still act on, or the reason it cannot.
 
-    Everything that can be wrong is checked before anything is written: an
-    invite that is spent or expired, a malformed date, a slot that somebody
-    else took while this page was open. The last one is the realistic race,
-    and the unique index on appointments is the backstop if the check and the
-    insert are separated by bad luck.
+    Each state gets its own sentence because "invalid link" covers four
+    different situations and only one of them means the guest did anything
+    wrong. Somebody who already booked should be told they already booked.
     """
     invite = get_by_token(token)
     if not invite:
@@ -274,16 +335,32 @@ def book(token, date_str, start_time, guest_name=None, note=None):
         raise InviteError("This invite has already been used to book a time.")
     if invite["status"] not in ("sent", "viewed"):
         raise InviteError("This invite is no longer active.")
+    return invite
 
+
+def _parse_start(date_str, start_time):
+    """The requested start as a datetime, refusing anything already gone."""
     try:
         day = datetime.strptime(date_str, "%Y-%m-%d").date()
         begin = datetime.strptime(start_time, "%H:%M")
     except (TypeError, ValueError):
         raise InviteError("Pick a date (YYYY-MM-DD) and a time (HH:MM).")
-
     if datetime.combine(day, begin.time()) < _now():
         raise InviteError("That time is in the past.")
+    return begin
 
+
+def book(token, date_str, start_time, guest_name=None, note=None):
+    """Take a slot against an invite. Returns (invite, appointment_id).
+
+    Everything that can be wrong is checked before anything is written: an
+    invite that is spent or expired, a malformed date, a slot that somebody
+    else took while this page was open. The last one is the realistic race,
+    and the unique index on appointments is the backstop if the check and the
+    insert are separated by bad luck.
+    """
+    invite = _open_invite_for(token)
+    begin = _parse_start(date_str, start_time)
     end_time = (begin + timedelta(minutes=invite["duration_min"])).strftime("%H:%M")
 
     if not is_slot_free(invite["host_id"], date_str, start_time, end_time):

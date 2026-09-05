@@ -209,10 +209,10 @@ def ensure_offerings(provider_id, conn, reset=False):
             (provider_id, title), one=True, conn=conn)
         if existing:
             continue
-        offerings.create(provider_id, title=title, category=cat, level=level,
-                         duration_min=mins, price_cents=cents, currency="CAD",
-                         summary=summary, description=desc, sort_order=order,
-                         conn=conn)
+        offerings.create(provider_id, offerings.OfferingDraft(
+            title=title, category=cat, level=level, duration_min=mins,
+            price_cents=cents, currency="CAD", summary=summary,
+            description=desc, sort_order=order), conn=conn)
         added += 1
     return added
 

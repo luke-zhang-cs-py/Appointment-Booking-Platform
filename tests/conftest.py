@@ -6,6 +6,7 @@ is imported. That is why this file does the setenv at module level rather
 than inside a fixture.
 """
 
+import datetime
 import os
 import sys
 import tempfile
@@ -15,7 +16,9 @@ sys.path.insert(0, ROOT)
 
 _TMP = tempfile.mkdtemp(prefix="almanac-tests-")
 os.environ["DATABASE_URL"] = "sqlite:///" + os.path.join(_TMP, "test.db")
-os.environ.setdefault("SECRET_KEY", "test-secret-not-a-real-key")
+# 32+ bytes: shorter and PyJWT emits InsecureKeyLengthWarning on every
+# encode, which buries anything else the suite has to say.
+os.environ.setdefault("SECRET_KEY", "test-secret-long-enough-for-hs256-and-then-some")
 os.environ.setdefault("SMTP_HOST", "")          # mail is logged, never sent
 os.environ.setdefault("APP_BASE_URL", "http://localhost:5000")
 
@@ -95,3 +98,37 @@ def offering(client, provider):
         "summary": "A real interview, then feedback.",
     }, headers=provider["auth"])
     return res.get_json()["offering"]
+
+
+@pytest.fixture
+def admin(client):
+    """An admin. Not self-registerable on purpose, so one is promoted.
+
+    The token issued at registration keeps working: token_required reloads
+    the user row on every request and roles_required reads the role from
+    that, not from the claim -- which is what you want when a role changes.
+    """
+    import database as db
+    token, user = register(client, "admin@test.local", role="provider", name="Admin")
+    db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (user["id"],))
+    return {"token": token, "id": user["id"],
+            "auth": {"Authorization": f"Bearer {token}"}}
+
+
+@pytest.fixture
+def booking(client, provider):
+    """A confirmed appointment between a fresh client and the provider."""
+    token, user = register(client, "booker@test.local", name="Bo Oker")
+    day = (datetime.date.today() + datetime.timedelta(days=5)).isoformat()
+    auth = {"Authorization": f"Bearer {token}"}
+    slots = client.get(f"/api/providers/{provider['id']}/slots?date={day}",
+                       headers=auth).get_json()["slots"]
+    res = client.post("/api/appointments", headers=auth, json={
+        "provider_id": provider["id"], "date": day,
+        "start_time": slots[0]["start"], "end_time": slots[0]["end"],
+        "notes": "Bring the portfolio.",
+    })
+    return {"id": res.get_json()["appointment"]["id"], "token": token,
+            "user": user, "auth": auth, "date": day,
+            "start": slots[0]["start"], "end": slots[0]["end"],
+            "free": slots}

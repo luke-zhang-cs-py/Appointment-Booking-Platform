@@ -70,21 +70,11 @@ def _public_view(invite, host):
 @token_required
 @roles_required("provider", "admin")
 def create_invite():
-    body = request.get_json(silent=True) or {}
     try:
-        invite = coffee_chats.create_invite(
-            host_id=g.current_user["id"],
-            guest_email=body.get("email"),
-            guest_name=body.get("name"),
-            topic=body.get("topic"),
-            message=body.get("message"),
-            duration_min=int(body.get("duration") or coffee_chats.DEFAULT_DURATION_MIN),
-            offering_id=body.get("offeringId"),
-        )
+        ask = coffee_chats.InviteRequest.from_payload(request.get_json(silent=True))
+        invite = coffee_chats.create_invite(g.current_user["id"], ask)
     except InviteError as exc:
         return _fail(exc)
-    except (TypeError, ValueError):
-        return _fail("Duration must be a number of minutes.")
 
     # Created first, mailed second, on purpose: a mail failure must not lose
     # the invite. The host can resend from the dashboard.

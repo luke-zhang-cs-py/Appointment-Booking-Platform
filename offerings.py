@@ -23,6 +23,7 @@ set of lengths that divide cleanly into the usual 15- and 30-minute grids.
 """
 
 import logging
+from dataclasses import dataclass, fields
 
 import database as db
 
@@ -34,6 +35,10 @@ log = logging.getLogger(__name__)
 # rare, it is impossible. A 15-minute grid supports every value here, which
 # is why seed_luke sets one.
 SLOT_MULTIPLES = (15, 30, 45, 60, 90)
+
+# Half an hour is the length somebody means when they do not say a length.
+DEFAULT_DURATION_MIN = 30
+DEFAULT_CURRENCY = "CAD"
 
 # Kept deliberately small. Categories are for grouping a booking page into
 # readable sections, and a list of twenty is not a grouping.
@@ -73,17 +78,71 @@ def _validate(title, duration_min, price_cents):
         raise OfferingError("Price cannot be negative. Use 0 for a free session.")
 
 
-def create(provider_id, title, duration_min=30, price_cents=0, currency="CAD",
-           category=None, summary=None, description=None, level=None,
-           sort_order=0, conn=None):
-    _validate(title, duration_min, price_cents)
+@dataclass
+class OfferingDraft:
+    """One thing a provider is putting on their list, before it has an id.
+
+    create() used to take eleven parameters. Eleven arguments in a row is a
+    thing pretending to be a signature: they always travel together, they are
+    meaningless apart, and every call site was already writing them out in
+    the same order and hoping. Naming the thing means the caller describes an
+    offering instead of remembering an argument order, and a new field is one
+    line here rather than a change to every signature it passes through.
+
+    from_payload() is where the API shape (camelCase, strings out of JSON)
+    stops and the domain shape starts, so nothing downstream has to know a
+    request was involved.
+    """
+
+    title: str
+    duration_min: int = DEFAULT_DURATION_MIN
+    price_cents: int = 0
+    currency: str = DEFAULT_CURRENCY
+    category: str = None
+    summary: str = None
+    description: str = None
+    level: str = None
+    sort_order: int = 0
+
+    @classmethod
+    def from_payload(cls, body):
+        """Build a draft from a JSON request body.
+
+        Raises OfferingError rather than letting a ValueError out, so a route
+        has one kind of failure to catch instead of two.
+        """
+        body = body or {}
+        try:
+            return cls(
+                title=body.get("title"),
+                duration_min=int(body.get("durationMin") or DEFAULT_DURATION_MIN),
+                price_cents=int(body.get("priceCents") or 0),
+                currency=body.get("currency") or DEFAULT_CURRENCY,
+                category=body.get("category"),
+                summary=body.get("summary"),
+                description=body.get("description"),
+                level=body.get("level"),
+                sort_order=int(body.get("sortOrder") or 0),
+            )
+        except (TypeError, ValueError):
+            raise OfferingError("Duration, price and sort order must be whole numbers.")
+
+    def validate(self):
+        """The same rules update() applies to a patched row. One place."""
+        _validate(self.title, self.duration_min, self.price_cents)
+
+
+def create(provider_id, draft, conn=None):
+    """Add a draft to a provider's catalogue. Returns the new id."""
+    draft.validate()
     return db.insert(
         """INSERT INTO offerings
            (provider_id, title, category, summary, description, duration_min,
             price_cents, currency, level, sort_order)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (provider_id, title.strip(), category, summary, description,
-         int(duration_min), int(price_cents), currency, level, int(sort_order)),
+        (provider_id, draft.title.strip(), draft.category, draft.summary,
+         draft.description, int(draft.duration_min), int(draft.price_cents),
+         draft.currency, draft.level, int(draft.sort_order)),
         conn=conn)
 
 
@@ -101,15 +160,18 @@ def list_for_provider(provider_id, active_only=True, conn=None):
     return db.query(sql, tuple(params), conn=conn)
 
 
-def update(offering_id, provider_id, **fields):
+def update(offering_id, provider_id, **patch):
     """Patch an offering. Only the caller's own rows, only known columns."""
     existing = get(offering_id)
     if not existing or existing["provider_id"] != provider_id:
         raise OfferingError("Offering not found.")
 
-    allowed = ("title", "category", "summary", "description", "duration_min",
-               "price_cents", "currency", "level", "is_active", "sort_order")
-    changes = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    # Patchable columns are the draft's fields plus is_active, which is not
+    # something you set when creating one. Deriving it from OfferingDraft
+    # rather than repeating the list means adding a field cannot leave a
+    # column creatable but not editable.
+    allowed = tuple(f.name for f in fields(OfferingDraft)) + ("is_active",)
+    changes = {k: v for k, v in patch.items() if k in allowed and v is not None}
     if not changes:
         return existing
 

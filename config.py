@@ -1,6 +1,19 @@
+import logging
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+log = logging.getLogger("almanac.config")
+
+# The development fallback for SECRET_KEY. It is committed, so it is public.
+# check_secret_key() below refuses to start a non-debug process that is still
+# using it -- see the note there for why that is worth a hard failure.
+DEV_SECRET_KEY = "dev-secret-change-me-in-production"
+
+# HS256 signs with a SHA-256 HMAC, so a key shorter than the 32-byte digest
+# is weaker than the algorithm it claims to be. PyJWT >= 2.10 warns about it
+# on every encode; this is the same floor, enforced once at startup.
+MIN_SECRET_BYTES = 32
 
 
 class Config:
@@ -11,7 +24,7 @@ class Config:
     """
 
     # --- Auth -----------------------------------------------------------
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me-in-production")
+    SECRET_KEY = os.environ.get("SECRET_KEY") or DEV_SECRET_KEY
     JWT_EXP_HOURS = int(os.environ.get("JWT_EXP_HOURS", "24"))
     JWT_ALGORITHM = "HS256"
 
@@ -56,3 +69,43 @@ class Config:
     REMINDERS_ENABLED = os.environ.get("REMINDERS_ENABLED", "1") == "1"
     REMINDER_HOURS_BEFORE = float(os.environ.get("REMINDER_HOURS_BEFORE", "24"))
     REMINDER_SCAN_MINUTES = float(os.environ.get("REMINDER_SCAN_MINUTES", "15"))
+
+
+def secret_key_problem(secret_key):
+    """What is wrong with this SECRET_KEY, in a sentence, or None if nothing.
+
+    SECRET_KEY signs every session token this app issues. Two ways it goes
+    wrong, and neither announces itself: the placeholder above, which is in a
+    public repository and lets anyone mint a valid admin token, and a key
+    short enough that HS256 is not delivering the strength it names.
+    """
+    if secret_key == DEV_SECRET_KEY:
+        return ("SECRET_KEY is still the development placeholder committed in "
+                "config.py. It signs every session token and it is public. "
+                "Generate one with: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(48))\"")
+    size = len((secret_key or "").encode("utf-8"))
+    if size < MIN_SECRET_BYTES:
+        return (f"SECRET_KEY is {size} bytes. HS256 needs at least "
+                f"{MIN_SECRET_BYTES} to be worth the name.")
+    return None
+
+
+def check_secret_key(secret_key, debug):
+    """Warn in development, refuse to start anywhere else.
+
+    Local development needs zero setup -- that is the point of every default
+    in this file -- so the placeholder stays usable while DEBUG is on. The
+    moment it is off, this is a deployment, and a deployment signing sessions
+    with a published string is not a warning-level problem. Failing at
+    startup is loud; a quietly forgeable token is not.
+
+    Returns the problem text (having logged it) or None.
+    """
+    problem = secret_key_problem(secret_key)
+    if problem is None:
+        return None
+    if not debug:
+        raise RuntimeError(problem)
+    log.warning("%s Fine locally, fatal with FLASK_DEBUG=0.", problem)
+    return problem

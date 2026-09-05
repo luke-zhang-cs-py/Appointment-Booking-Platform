@@ -18,7 +18,8 @@ mailed once about a given appointment for a given reason -- overlapping
 reminder scans, a double-clicked button, or two web workers running at the
 same time all collapse into one message.
 
-What actually gets written into those messages lives in notifications.py.
+What goes *in* those messages is notifications.py and
+coffee_notifications.py; how they are laid out is email_render.py.
 """
 
 import datetime as dt
@@ -26,6 +27,7 @@ import logging
 import queue
 import smtplib
 import sqlite3
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -48,13 +50,26 @@ except ImportError:
 
 @dataclass
 class Message:
-    """One outbound email, already rendered and already claimed in email_log."""
+    """One outbound email, already rendered.
+
+    This used to be seven positional arguments to send(), which then built a
+    smaller version of this dataclass out of them. The arguments were an
+    object all along: they travel together, none of them means anything
+    alone, and every caller wrote them out in the same order. Naming it means
+    a call site reads as one thing being described rather than seven being
+    passed in the right sequence.
+
+    ``log_id`` is filled in by send() once the message is claimed in
+    email_log. Callers do not set it.
+    """
 
     kind: str
     to: str
     subject: str
     text: str
     html: str = ""
+    appointment_id: int = None
+    user_id: int = None
     log_id: int = None
 
 
@@ -66,9 +81,9 @@ _worker_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-def send(kind, to, subject, text, html="", appointment_id=None, user_id=None):
+def send(message):
     """
-    Queue one email. Returns True if it was accepted for delivery.
+    Queue one Message. Returns True if it was accepted for delivery.
 
     Returns False -- without raising -- when mail is switched off, when there
     is no address to send to, or when this exact message has already been sent
@@ -76,17 +91,17 @@ def send(kind, to, subject, text, html="", appointment_id=None, user_id=None):
     never be able to fail the request that triggered them.
     """
     if not current_app.config["MAIL_ENABLED"]:
-        log.info("mail disabled, skipping %s to %s", kind, to)
+        log.info("mail disabled, skipping %s to %s", message.kind, message.to)
         return False
-    if not to:
-        return False
-
-    log_id = _claim(kind, to, subject, appointment_id, user_id)
-    if log_id is None:
-        log.debug("%s already sent to %s for appointment %s", kind, to, appointment_id)
+    if not message.to:
         return False
 
-    message = Message(kind=kind, to=to, subject=subject, text=text, html=html, log_id=log_id)
+    message.log_id = _claim(message)
+    if message.log_id is None:
+        log.debug("%s already sent to %s for appointment %s",
+                  message.kind, message.to, message.appointment_id)
+        return False
+
     if _worker is not None and _worker.is_alive():
         _queue.put(message)
     else:
@@ -121,7 +136,7 @@ def wait_until_idle(timeout=15.0):
 # ---------------------------------------------------------------------------
 # email_log bookkeeping
 # ---------------------------------------------------------------------------
-def _claim(kind, to, subject, appointment_id, user_id):
+def _claim(message):
     """
     Reserve the right to send this message, returning the email_log row id.
 
@@ -133,7 +148,8 @@ def _claim(kind, to, subject, appointment_id, user_id):
         return db.insert(
             "INSERT INTO email_log (kind, recipient, subject, appointment_id, user_id, status) "
             "VALUES (?, ?, ?, ?, ?, 'queued')",
-            (kind, to, subject, appointment_id, user_id),
+            (message.kind, message.to, message.subject,
+             message.appointment_id, message.user_id),
         )
     except INTEGRITY_ERRORS:
         db.rollback()
@@ -141,7 +157,7 @@ def _claim(kind, to, subject, appointment_id, user_id):
     existing = db.query(
         "SELECT id, status FROM email_log "
         "WHERE appointment_id = ? AND kind = ? AND recipient = ?",
-        (appointment_id, kind, to),
+        (message.appointment_id, message.kind, message.to),
         one=True,
     )
     if existing and existing["status"] == "failed":
@@ -249,4 +265,21 @@ def _log_instead_of_sending(message):
             "",
         ]
     )
-    print(body, flush=True)
+    _print(body)
+
+
+def _print(body):
+    """print(), minus the one way it can fail.
+
+    Message bodies contain characters that are not in every console codepage
+    -- the en dash between a start and end time is enough. Under cp437 or a
+    bare C locale, printing one raises UnicodeEncodeError, _process catches
+    it, and the email is recorded as *failed* even though in this mode
+    "sending" only ever meant printing. A console that cannot draw a dash is
+    not a delivery failure, so it degrades to whatever that console can show.
+    """
+    try:
+        print(body, flush=True)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+        print(body.encode(encoding, "replace").decode(encoding, "replace"), flush=True)

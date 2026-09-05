@@ -18,74 +18,87 @@ def _to_hhmm(total_minutes: int) -> str:
     return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}"
 
 
+MINUTES_IN_A_DAY = 24 * 60
+
+
 def get_free_slots(provider_id: int, date_str: str):
     """
     date_str: "YYYY-MM-DD"
     Returns a sorted list of {"start": "HH:MM", "end": "HH:MM"} slots.
     """
     target_date = dt.datetime.strptime(date_str, "%Y-%m-%d").date()
-    weekday = target_date.weekday()  # Monday=0 ... Sunday=6, matches ISO
-    # We store Sunday=0..Saturday=6 (common calendar-UI convention), convert:
-    day_of_week = (weekday + 1) % 7
+    windows = _windows_for(provider_id, target_date)
+    if not windows:
+        return []
 
-    windows = db.query(
+    busy = _busy_ranges(provider_id, date_str)
+    now = dt.datetime.now()
+    # Only today has a past to exclude. -1 is before every slot start, so
+    # every other date compares against something no slot can be at or below.
+    earliest = (now.hour * 60 + now.minute) if target_date == now.date() else -1
+
+    slots = [slot for w in windows for slot in _tile(w, busy, earliest)]
+    slots.sort(key=lambda s: s["start"])
+    return slots
+
+
+def _windows_for(provider_id, target_date):
+    """The provider's recurring hours for this weekday."""
+    # Python has Monday=0; we store Sunday=0, the common calendar-UI
+    # convention. Convert rather than storing two of anything.
+    day_of_week = (target_date.weekday() + 1) % 7
+    return db.query(
         "SELECT start_time, end_time, slot_minutes FROM availability "
         "WHERE provider_id = ? AND day_of_week = ?",
         (provider_id, day_of_week),
     )
-    if not windows:
-        return []
 
-    # Whole-day blocks (no start/end) wipe out all windows for the date.
-    day_blocks = db.query(
+
+def _busy_ranges(provider_id, date_str):
+    """Minute ranges on this date that cannot be booked over.
+
+    One-off blocks and confirmed appointments are the same thing here: time
+    that is already spoken for. A block with no start and end means the whole
+    day, which is expressed as a range covering it rather than as a separate
+    kind of answer -- a caller that has to check for a special value is a
+    caller that can forget to.
+    """
+    blocks = db.query(
         "SELECT start_time, end_time FROM blocked_slots "
         "WHERE provider_id = ? AND date = ?",
         (provider_id, date_str),
     )
-    if any(b["start_time"] is None for b in day_blocks):
-        return []
+    if any(b["start_time"] is None for b in blocks):
+        return [(0, MINUTES_IN_A_DAY)]
 
-    partial_blocks = [
-        (_to_minutes(b["start_time"]), _to_minutes(b["end_time"]))
-        for b in day_blocks
-        if b["start_time"] is not None
-    ]
+    ranges = [(_to_minutes(b["start_time"]), _to_minutes(b["end_time"])) for b in blocks]
 
     booked = db.query(
         "SELECT start_time, end_time FROM appointments "
         "WHERE provider_id = ? AND date = ? AND status = 'confirmed'",
         (provider_id, date_str),
     )
-    booked_ranges = [(_to_minutes(a["start_time"]), _to_minutes(a["end_time"])) for a in booked]
+    return ranges + [(_to_minutes(a["start_time"]), _to_minutes(a["end_time"]))
+                     for a in booked]
 
-    now = dt.datetime.now()
-    is_today = target_date == now.date()
-    now_minutes = now.hour * 60 + now.minute
 
-    slots = []
-    for w in windows:
-        start = _to_minutes(w["start_time"])
-        end = _to_minutes(w["end_time"])
-        step = w["slot_minutes"]
-        cursor = start
-        while cursor + step <= end:
-            slot_start, slot_end = cursor, cursor + step
-            cursor += step
+def _tile(window, busy, earliest):
+    """One availability window cut into free slot-sized pieces."""
+    end = _to_minutes(window["end_time"])
+    step = window["slot_minutes"]
 
-            if is_today and slot_start <= now_minutes:
-                continue  # don't offer slots already in the past today
-
-            overlaps = any(
-                slot_start < b_end and slot_end > b_start
-                for b_start, b_end in booked_ranges + partial_blocks
-            )
-            if overlaps:
-                continue
-
-            slots.append({"start": _to_hhmm(slot_start), "end": _to_hhmm(slot_end)})
-
-    slots.sort(key=lambda s: s["start"])
-    return slots
+    out = []
+    cursor = _to_minutes(window["start_time"])
+    while cursor + step <= end:
+        slot_start, slot_end = cursor, cursor + step
+        cursor += step
+        if slot_start <= earliest:
+            continue
+        if any(slot_start < busy_end and slot_end > busy_start
+               for busy_start, busy_end in busy):
+            continue
+        out.append({"start": _to_hhmm(slot_start), "end": _to_hhmm(slot_end)})
+    return out
 
 
 def is_slot_free(provider_id: int, date_str: str, start_time: str, end_time: str) -> bool:

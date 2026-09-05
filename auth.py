@@ -17,7 +17,11 @@ def verify_password(raw_password: str, password_hash: str) -> bool:
 
 
 def create_token(user: dict) -> str:
-    now = datetime.datetime.utcnow()
+    # Timezone-aware rather than utcnow(): that call is deprecated and
+    # scheduled for removal, and it returns a naive datetime that only
+    # happens to mean UTC. PyJWT converts aware datetimes to epoch seconds
+    # itself, so "exp" and "iat" are unchanged on the wire.
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         # RFC 7519 says "sub" is a string, and PyJWT >= 2.10 enforces it.
         "sub": str(user["id"]),

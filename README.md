@@ -49,7 +49,9 @@ database.py                DB abstraction: SQLite locally, Postgres in the cloud
 auth.py                    JWT creation/verification, RBAC decorators
 calendar_logic.py          Free-slot calculation engine
 mailer.py                  Email transport: SMTP, background queue, delivery log
-notifications.py           What gets mailed and when + the reminder scheduler
+email_render.py            Message layout: one call renders text and HTML
+notifications.py           What gets mailed, on what occasion
+scheduler.py               The one background timer: reminders + coffee nudges
 coffee_chats.py            Invite lifecycle, tokens, guest booking
 coffee_notifications.py    Invite / nudge / booked / declined emails
 offerings.py               Priced session catalogue per provider
@@ -85,6 +87,15 @@ python app.py               # http://localhost:5000
 No `.env` needed to start — sensible defaults kick in (SQLite file,
 dev JWT secret). For anything beyond local testing, copy `.env.example` to
 `.env`, fill in a real `SECRET_KEY`, and load it before running.
+
+The dev secret is committed, so it is public, and it signs every session
+token. Running with `FLASK_DEBUG=0` and no `SECRET_KEY` set therefore does
+not start at all — it raises at boot rather than serving tokens anyone could
+forge. Generate one with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
 Sign up as a **client** or **provider** from the UI, or sign in as the
 seeded admin. A provider needs to add weekly hours under **My schedule**

@@ -15,10 +15,13 @@ asking and why, mentions the platform second, and carries a link that works
 without a login. Nothing says "sign in to your dashboard", because for a
 first-contact email that is the fastest way to lose the reader.
 
-The rendering helpers are shared with notifications.py rather than
-duplicated. They are underscore-prefixed there, and importing them anyway is
-the lesser evil: two copies of the house email style would drift, and the
-first thing to diverge would be the footer nobody reads until it is wrong.
+The layout helpers are shared rather than duplicated: two copies of the
+house email style would drift, and the first thing to diverge is the footer
+nobody reads until it is wrong. They used to be imported from
+notifications.py, where they were underscore-prefixed -- a load-bearing
+import of somebody else's privates. They now live in email_render.py, which
+exists to be shared, and this module and notifications.py are peers that
+both use it.
 """
 
 import logging
@@ -26,7 +29,9 @@ import logging
 import coffee_chats
 import database as db
 import mailer
-from notifications import _details, _load, _long_date, _render, _url, _when
+from email_render import details as appointment_details
+from email_render import long_date, render, url, when
+from notifications import load_appointment
 
 log = logging.getLogger(__name__)
 
@@ -57,25 +62,25 @@ def send_invite(invite_id):
             intro.append(f"“{invite['message']}”")
         intro.append("Pick whatever time suits you — no account needed.")
 
-        text, html = _render(
+        text, html = render(
             title=f"{host['name']} would like a coffee chat",
             intro=intro,
             details=[
                 ("With", f"{host['name']} ({host['email']})"),
                 ("Length", f"{invite['duration_min']} minutes"),
                 ("Topic", invite["topic"] or "Coffee chat"),
-                ("Link expires", _long_date(invite["expires_at"][:10])),
+                ("Link expires", long_date(invite["expires_at"][:10])),
             ],
-            action=("Pick a time", _url(f"/coffee/{invite['token']}")),
+            action=("Pick a time", url(f"/coffee/{invite['token']}")),
             outro="If now is not a good time, the same link lets you say so.",
         )
-        mailer.send(
+        mailer.send(mailer.Message(
             kind="coffee_invite",
             to=invite["guest_email"],
             subject=f"{host['name']} would like to grab a coffee chat",
             text=text,
             html=html,
-        )
+        ))
     except Exception:
         log.exception("coffee invite email failed for invite %s", invite_id)
 
@@ -103,7 +108,7 @@ def send_nudge(invite_id):
                   if seen else
                   "This may have landed at a busy moment, so here it is again.")
 
-        text, html = _render(
+        text, html = render(
             title="Still up for a coffee chat?",
             intro=[
                 f"Hi {invite['guest_name'] or 'there'},",
@@ -113,19 +118,19 @@ def send_nudge(invite_id):
             details=[
                 ("With", host["name"]),
                 ("Length", f"{invite['duration_min']} minutes"),
-                ("Link expires", _long_date(invite["expires_at"][:10])),
+                ("Link expires", long_date(invite["expires_at"][:10])),
             ],
-            action=("Pick a time", _url(f"/coffee/{invite['token']}")),
+            action=("Pick a time", url(f"/coffee/{invite['token']}")),
             outro="No reply needed if the timing does not work — the invite "
                   "closes itself.",
         )
-        mailer.send(
+        mailer.send(mailer.Message(
             kind="coffee_nudge",
             to=invite["guest_email"],
             subject=f"Still up for a coffee chat with {host['name']}?",
             text=text,
             html=html,
-        )
+        ))
     except Exception:
         log.exception("coffee nudge email failed for invite %s", invite_id)
 
@@ -142,32 +147,32 @@ def notify_booked(invite_id):
         invite = _load_invite(invite_id)
         if not invite or not invite["appointment_id"]:
             return
-        appt = _load(invite["appointment_id"])
+        appt = load_appointment(invite["appointment_id"])
         if not appt:
             return
 
-        text, html = _render(
+        text, html = render(
             title="Your coffee chat invite was accepted",
             intro=[
                 f"Hi {appt['provider_name']},",
                 f"{appt['client_name']} picked a time from the invite you sent.",
             ],
-            details=_details(appt, counterpart=("Guest", appt["client_name"])) + [
+            details=appointment_details(appt, counterpart=("Guest", appt["client_name"])) + [
                 ("Topic", invite["topic"] or "Coffee chat"),
-                ("Invited", _long_date(invite["created_at"][:10])),
+                ("Invited", long_date(invite["created_at"][:10])),
             ],
-            action=("Open Almanac", _url("/")),
+            action=("Open Almanac", url("/")),
             outro="It is on your calendar now, with a reminder the day before.",
         )
-        mailer.send(
+        mailer.send(mailer.Message(
             kind="coffee_booked",
             to=appt["provider_email"],
-            subject=f"Coffee chat booked: {_when(appt)} with {appt['client_name']}",
+            subject=f"Coffee chat booked: {when(appt)} with {appt['client_name']}",
             text=text,
             html=html,
             appointment_id=appt["id"],
             user_id=appt["provider_id"],
-        )
+        ))
     except Exception:
         log.exception("coffee booked email failed for invite %s", invite_id)
 
@@ -182,30 +187,30 @@ def notify_declined(invite_id):
         if not host:
             return
 
-        details = [("Guest", invite["guest_email"]),
-                   ("Topic", invite["topic"] or "Coffee chat")]
+        rows = [("Guest", invite["guest_email"]),
+                ("Topic", invite["topic"] or "Coffee chat")]
         if invite["message"]:
-            details.append(("They said", invite["message"]))
+            rows.append(("They said", invite["message"]))
 
-        text, html = _render(
+        text, html = render(
             title="Coffee chat invite declined",
             intro=[
                 f"Hi {host['name']},",
                 f"{invite['guest_name'] or invite['guest_email']} is not able to "
                 f"take up the invite.",
             ],
-            details=details,
-            action=("Open Almanac", _url("/")),
+            details=rows,
+            action=("Open Almanac", url("/")),
             outro="No slot was ever held, so nothing needs freeing up.",
         )
-        mailer.send(
+        mailer.send(mailer.Message(
             kind="coffee_declined",
             to=host["email"],
             subject="Coffee chat invite declined",
             text=text,
             html=html,
             user_id=host["id"],
-        )
+        ))
     except Exception:
         log.exception("coffee declined email failed for invite %s", invite_id)
 

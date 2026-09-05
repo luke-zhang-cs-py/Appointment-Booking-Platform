@@ -2,9 +2,10 @@ import logging
 
 from flask import Flask, render_template
 
+import config
 import database as db
 import mailer
-import notifications
+import scheduler
 from config import Config
 from routes.appointment_routes import bp as appointment_bp
 from routes.auth_routes import bp as auth_bp
@@ -23,6 +24,11 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    # Before anything is wired up: a process signing sessions with the
+    # committed placeholder is only acceptable while DEBUG is on. Off, this
+    # raises rather than serving forgeable tokens.
+    config.check_secret_key(app.config["SECRET_KEY"], app.config["DEBUG"])
+
     db.init_app(app)
     mailer.init_app(app)
 
@@ -37,7 +43,7 @@ def create_app():
     with app.app_context():
         db.init_db()
 
-    notifications.start_reminder_scheduler(app)
+    scheduler.start(app)
 
     @app.get("/")
     def index():

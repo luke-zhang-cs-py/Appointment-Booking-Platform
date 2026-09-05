@@ -36,8 +36,6 @@ def public_offerings(provider_id):
 
     groups = offerings.grouped_for_provider(provider_id)
     flat = [o for grp in groups for o in grp["offerings"]]
-    free = [o for o in flat if o["isFree"]]
-    paid = [o for o in flat if not o["isFree"]]
 
     return jsonify({
         "provider": {"id": provider["id"], "name": provider["name"],
@@ -93,24 +91,11 @@ def my_offerings():
 @token_required
 @roles_required("provider", "admin")
 def create_offering():
-    body = request.get_json(silent=True) or {}
     try:
-        new_id = offerings.create(
-            provider_id=g.current_user["id"],
-            title=body.get("title"),
-            category=body.get("category"),
-            summary=body.get("summary"),
-            description=body.get("description"),
-            level=body.get("level"),
-            duration_min=int(body.get("durationMin") or 30),
-            price_cents=int(body.get("priceCents") or 0),
-            currency=body.get("currency") or "CAD",
-            sort_order=int(body.get("sortOrder") or 0),
-        )
+        draft = offerings.OfferingDraft.from_payload(request.get_json(silent=True))
+        new_id = offerings.create(g.current_user["id"], draft)
     except OfferingError as exc:
         return _fail(exc)
-    except (TypeError, ValueError):
-        return _fail("Duration and price must be whole numbers.")
     return jsonify({"offering": offerings.owner_view(offerings.get(new_id))}), 201
 
 

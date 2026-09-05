@@ -76,7 +76,10 @@ def init_db():
 # Auth helpers
 # ----------------------------------------------------------------------
 def create_token(user):
-    now = datetime.datetime.utcnow()
+    # Aware rather than utcnow(): that call is deprecated and scheduled for
+    # removal. Same change as auth.py -- this file is a standalone copy, and
+    # the last thing it missed was the "sub" fix directly below.
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         # RFC 7519 says "sub" is a string and PyJWT >= 2.10 enforces it on
         # decode, so an int here encodes fine and then fails every login with
@@ -164,7 +167,11 @@ def me():
         return jsonify({"error": "Invalid token"}), 401
 
     db = get_db()
-    user = db.execute("SELECT * FROM users WHERE id = ?", (payload["sub"],)).fetchone()
+    # "sub" is a string by the time it comes back out (see create_token).
+    # SQLite would coerce it against an INTEGER column and match anyway;
+    # converting here says what is meant instead of relying on that.
+    user = db.execute("SELECT * FROM users WHERE id = ?",
+                      (int(payload["sub"]),)).fetchone()
     if not user:
         return jsonify({"error": "Account not found"}), 401
     return jsonify({"user": public_user(user)})

@@ -50,7 +50,9 @@ def book_appointment():
         )
     except INTEGRITY_ERRORS:
         db.rollback()
-        return jsonify({"error": "That slot was just booked by someone else. Please pick another."}), 409
+        return jsonify(
+            {"error": "That slot was just booked by someone else. Please pick another."}
+        ), 409
 
     notifications.notify_booked(new_id)
 
@@ -88,28 +90,35 @@ def my_appointments():
     return jsonify({"appointments": rows})
 
 
-def _load_owned_appointment(appt_id):
-    appt = db.query("SELECT * FROM appointments WHERE id = ?", (appt_id,), one=True)
-    if not appt:
-        return None
-    role = g.current_user["role"]
-    uid = g.current_user["id"]
+def _load(appt_id):
+    return db.query("SELECT * FROM appointments WHERE id = ?", (appt_id,), one=True)
+
+
+def _may_act_on(appt):
+    """Both parties to an appointment may change it; an admin may change any.
+
+    This used to be one function returning an appointment, or None, or the
+    string "forbidden", which the callers then compared a dict against. Three
+    kinds of thing out of one return is a sentinel pretending to be a type,
+    and the caller cannot tell from the signature that it has to check for a
+    magic string. Missing it fails open, which for a permission check is the
+    wrong direction.
+    """
+    role, uid = g.current_user["role"], g.current_user["id"]
     if role == "admin":
-        return appt
-    if role == "client" and appt["client_id"] == uid:
-        return appt
-    if role == "provider" and appt["provider_id"] == uid:
-        return appt
-    return "forbidden"
+        return True
+    if role in ("client", "provider"):
+        return appt[f"{role}_id"] == uid
+    return False
 
 
 @bp.post("/<int:appt_id>/cancel")
 @token_required
 def cancel_appointment(appt_id):
-    appt = _load_owned_appointment(appt_id)
-    if appt is None:
+    appt = _load(appt_id)
+    if not appt:
         return jsonify({"error": "Appointment not found"}), 404
-    if appt == "forbidden":
+    if not _may_act_on(appt):
         return jsonify({"error": "You can't cancel someone else's appointment"}), 403
     if appt["status"] != "confirmed":
         return jsonify({"error": f"Appointment is already {appt['status']}"}), 400
@@ -123,10 +132,10 @@ def cancel_appointment(appt_id):
 @token_required
 @roles_required("provider", "admin")
 def complete_appointment(appt_id):
-    appt = _load_owned_appointment(appt_id)
-    if appt is None:
+    appt = _load(appt_id)
+    if not appt:
         return jsonify({"error": "Appointment not found"}), 404
-    if appt == "forbidden":
+    if not _may_act_on(appt):
         return jsonify({"error": "You can't update someone else's appointment"}), 403
     if appt["status"] != "confirmed":
         return jsonify({"error": f"Appointment is already {appt['status']}"}), 400
