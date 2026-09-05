@@ -89,7 +89,7 @@ def create_invite():
     # Created first, mailed second, on purpose: a mail failure must not lose
     # the invite. The host can resend from the dashboard.
     coffee_notifications.send_invite(invite["id"])
-    return jsonify({"invite": dict(invite)}), 201
+    return jsonify({"invite": coffee_chats.host_view(invite)}), 201
 
 
 @bp.get("/invites")
@@ -99,7 +99,7 @@ def list_invites():
     status = request.args.get("status")
     invites = coffee_chats.list_for_host(g.current_user["id"], status)
     return jsonify({
-        "invites": [dict(i) for i in invites],
+        "invites": [coffee_chats.host_view(i) for i in invites],
         "stats": coffee_chats.stats_for_host(g.current_user["id"]),
     })
 
@@ -115,7 +115,7 @@ def nudge(invite_id):
         return _fail("That invite is no longer open.")
     coffee_notifications.send_nudge(invite_id)
     coffee_chats.record_nudge(invite_id)
-    return jsonify({"invite": dict(coffee_chats.get_invite(invite_id))})
+    return jsonify({"invite": coffee_chats.host_view(coffee_chats.get_invite(invite_id))})
 
 
 @bp.delete("/invites/<int:invite_id>")
@@ -126,7 +126,7 @@ def revoke(invite_id):
         invite = coffee_chats.revoke(invite_id, g.current_user["id"])
     except InviteError as exc:
         return _fail(exc, 404 if "not found" in str(exc).lower() else 400)
-    return jsonify({"invite": dict(invite)})
+    return jsonify({"invite": coffee_chats.host_view(invite)})
 
 
 @bp.post("/run-nudges")

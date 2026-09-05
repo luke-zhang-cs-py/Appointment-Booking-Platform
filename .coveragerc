@@ -1,0 +1,12 @@
+[run]
+omit =
+    tests/*
+    login_page.py
+    seed_data.py
+    seed_luke.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError

@@ -39,7 +39,7 @@ import secrets
 from datetime import date, datetime, timedelta
 
 import database as db
-from calendar_logic import get_free_slots, is_slot_free, slot_starts_for
+from calendar_logic import is_slot_free, slot_starts_for
 
 log = logging.getLogger(__name__)
 
@@ -386,6 +386,37 @@ def record_nudge(invite_id):
            SET nudge_count = nudge_count + 1, last_nudge_at = ?
            WHERE id = ?""",
         (_iso(_now()), invite_id))
+
+
+def host_view(invite):
+    """An invite as the host sees it, in the API's casing.
+
+    The host endpoints used to return dict(row) straight from SQLite, which
+    is snake_case, while the guest endpoints returned camelCase from a
+    hand-built dict. Same API, two conventions, decided by which handler you
+    happened to hit. This is the one shape.
+
+    The token is included here and nowhere else: the host needs it to copy
+    the link, and the guest already has it.
+    """
+    return {
+        "id": invite["id"],
+        "guestEmail": invite["guest_email"],
+        "guestName": invite["guest_name"],
+        "token": invite["token"],
+        "topic": invite["topic"],
+        "message": invite["message"],
+        "durationMin": invite["duration_min"],
+        "offeringId": invite["offering_id"],
+        "status": invite["status"],
+        "appointmentId": invite["appointment_id"],
+        "nudgeCount": invite["nudge_count"],
+        "lastNudgeAt": invite["last_nudge_at"],
+        "viewedAt": invite["viewed_at"],
+        "respondedAt": invite["responded_at"],
+        "expiresAt": invite["expires_at"],
+        "createdAt": invite["created_at"],
+    }
 
 
 def stats_for_host(host_id):

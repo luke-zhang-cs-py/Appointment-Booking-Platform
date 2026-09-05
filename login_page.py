@@ -78,7 +78,11 @@ def init_db():
 def create_token(user):
     now = datetime.datetime.utcnow()
     payload = {
-        "sub": user["id"],
+        # RFC 7519 says "sub" is a string and PyJWT >= 2.10 enforces it on
+        # decode, so an int here encodes fine and then fails every login with
+        # InvalidSubjectError. auth.py carries the same fix; this file is a
+        # standalone copy and did not get it until it was audited.
+        "sub": str(user["id"]),
         "role": user["role"],
         "name": user["name"],
         "iat": now,

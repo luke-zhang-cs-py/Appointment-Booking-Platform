@@ -46,19 +46,37 @@ def public_offerings(provider_id):
         "count": len(flat),
         # A range is more use on a landing page than a list of every price,
         # and "from free" is the honest way to say it when an intro exists.
-        "priceRange": None if not flat else {
-            "hasFree": bool(free),
-            "minPaid": min((o["priceCents"] for o in paid), default=None),
-            "maxPaid": max((o["priceCents"] for o in paid), default=None),
-            "label": (
-                "Free" if not paid else
-                (f"From free to {max(paid, key=lambda o: o['priceCents'])['price']}"
-                 if free else
-                 f"{min(paid, key=lambda o: o['priceCents'])['price']}"
-                 f" – {max(paid, key=lambda o: o['priceCents'])['price']}")
-            ),
-        },
+        "priceRange": _price_range(flat),
     })
+
+
+def _price_range(items):
+    """A summary line for a landing page.
+
+    Pulled out of the handler because it was a conditional expression nested
+    three deep -- the kind that is quicker to rewrite than to read.
+    """
+    if not items:
+        return None
+    paid = sorted((o for o in items if not o["isFree"]),
+                  key=lambda o: o["priceCents"])
+    has_free = any(o["isFree"] for o in items)
+
+    if not paid:
+        label = "Free"
+    elif has_free:
+        label = f"From free to {paid[-1]['price']}"
+    elif paid[0]["price"] == paid[-1]["price"]:
+        label = paid[0]["price"]
+    else:
+        label = f"{paid[0]['price']} – {paid[-1]['price']}"
+
+    return {
+        "hasFree": has_free,
+        "minPaid": paid[0]["priceCents"] if paid else None,
+        "maxPaid": paid[-1]["priceCents"] if paid else None,
+        "label": label,
+    }
 
 
 # ------------------------------------------------------------------- owner
@@ -68,7 +86,7 @@ def public_offerings(provider_id):
 @roles_required("provider", "admin")
 def my_offerings():
     rows = offerings.list_for_provider(g.current_user["id"], active_only=False)
-    return jsonify({"offerings": [dict(r) for r in rows]})
+    return jsonify({"offerings": [offerings.owner_view(r) for r in rows]})
 
 
 @bp.post("/offerings/mine")
@@ -93,7 +111,7 @@ def create_offering():
         return _fail(exc)
     except (TypeError, ValueError):
         return _fail("Duration and price must be whole numbers.")
-    return jsonify({"offering": dict(offerings.get(new_id))}), 201
+    return jsonify({"offering": offerings.owner_view(offerings.get(new_id))}), 201
 
 
 @bp.patch("/offerings/mine/<int:offering_id>")
@@ -120,7 +138,7 @@ def update_offering(offering_id):
         updated = offerings.update(offering_id, g.current_user["id"], **fields)
     except OfferingError as exc:
         return _fail(exc, 404 if "not found" in str(exc).lower() else 400)
-    return jsonify({"offering": dict(updated)})
+    return jsonify({"offering": offerings.owner_view(updated)})
 
 
 @bp.delete("/offerings/mine/<int:offering_id>")
@@ -132,4 +150,4 @@ def remove_offering(offering_id):
         offering = offerings.deactivate(offering_id, g.current_user["id"])
     except OfferingError as exc:
         return _fail(exc, 404)
-    return jsonify({"offering": dict(offering)})
+    return jsonify({"offering": offerings.owner_view(offering)})

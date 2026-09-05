@@ -541,7 +541,7 @@ async function renderOfferingsView() {
          * more ceremony than the change deserves. */
         const price = el("input", {
           type: "number", min: "0", step: "1",
-          value: String(o.price_cents / 100), style: "width:5.5rem;",
+          value: String(o.priceCents / 100), style: "width:5.5rem;",
         });
         const save = el("button", { class: "btn btn-teal" }, "Save");
         save.onclick = async () => {
@@ -558,28 +558,28 @@ async function renderOfferingsView() {
         };
 
         const toggle = el("button",
-          { class: o.is_active ? "btn btn-danger" : "btn btn-teal" },
-          o.is_active ? "Hide" : "Show");
+          { class: o.isActive ? "btn btn-danger" : "btn btn-teal" },
+          o.isActive ? "Hide" : "Show");
         toggle.onclick = async () => {
           try {
-            if (o.is_active) await Api.del(`/api/offerings/mine/${o.id}`);
+            if (o.isActive) await Api.del(`/api/offerings/mine/${o.id}`);
             else await Api.patch(`/api/offerings/mine/${o.id}`, { isActive: 1 });
             renderOfferingsView();
           } catch (err) { toast(err.message, "error"); }
         };
 
-        tbody.append(el("tr", { style: o.is_active ? "" : "opacity:.5;" }, [
+        tbody.append(el("tr", { style: o.isActive ? "" : "opacity:.5;" }, [
           el("td", {}, [
             el("div", {}, o.title),
             o.summary ? el("div", { class: "muted", style: "font-size:.78rem;" }, o.summary) : "",
           ]),
           el("td", {}, o.category || "—"),
-          el("td", { class: "mono" }, `${o.duration_min} min`),
+          el("td", { class: "mono" }, `${o.durationMin} min`),
           el("td", {}, el("div", { style: "display:flex; gap:.4rem; align-items:center;" },
                             [price, save])),
           el("td", {}, el("span",
-            { class: `status-pill ${o.is_active ? "confirmed" : "cancelled"}` },
-            o.is_active ? "live" : "hidden")),
+            { class: `status-pill ${o.isActive ? "confirmed" : "cancelled"}` },
+            o.isActive ? "live" : "hidden")),
           el("td", {}, toggle),
         ]));
       });
@@ -651,9 +651,9 @@ async function renderCoffeeView() {
 
   try {
     const { offerings } = await Api.get("/api/offerings/mine");
-    offerings.filter((o) => o.is_active).forEach((o) => {
+    offerings.filter((o) => o.isActive).forEach((o) => {
       offering.append(el("option", { value: String(o.id) },
-        `${o.title} — ${money(o.price_cents, o.currency)}, ${o.duration_min} min`));
+        `${o.title} — ${money(o.priceCents, o.currency)}, ${o.durationMin} min`));
     });
   } catch (_e) { /* the catalogue is optional; a general chat still works */ }
 
@@ -728,14 +728,14 @@ async function renderCoffeeView() {
         };
         actions.append(copy, nudge, revoke);
       }
-      const nudged = i.nudge_count ? ` · nudged ${i.nudge_count}×` : "";
+      const nudged = i.nudgeCount ? ` · nudged ${i.nudgeCount}×` : "";
       tbody.append(el("tr", {}, [
         el("td", {}, [
-          el("div", {}, i.guest_name || i.guest_email),
-          i.guest_name ? el("div", { class: "muted", style: "font-size:.78rem;" }, i.guest_email) : "",
+          el("div", {}, i.guestName || i.guestEmail),
+          i.guestName ? el("div", { class: "muted", style: "font-size:.78rem;" }, i.guestEmail) : "",
         ]),
         el("td", {}, i.topic || "Coffee chat"),
-        el("td", { class: "mono" }, (i.created_at || "").slice(0, 10)),
+        el("td", { class: "mono" }, (i.createdAt || "").slice(0, 10)),
         el("td", {}, [
           el("span", { class: `status-pill ${INVITE_PILL[i.status] || "pending"}` }, i.status),
           el("span", { class: "muted", style: "font-size:.72rem;" }, nudged),

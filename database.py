@@ -88,7 +88,6 @@ def _adapt_sql(sql: str) -> str:
 # ---------------------------------------------------------------------------
 def query(sql, params=(), one=False, conn=None):
     """SELECT helper. Returns list[dict] or dict|None if one=True."""
-    owns_conn = conn is None
     conn = conn or get_db()
     cur = conn.cursor()
     cur.execute(_adapt_sql(sql), params)
@@ -102,7 +101,6 @@ def query(sql, params=(), one=False, conn=None):
 
 def execute(sql, params=(), conn=None):
     """INSERT/UPDATE/DELETE helper. Commits and returns last row id (if any)."""
-    owns_conn = conn is None
     conn = conn or get_db()
     cur = conn.cursor()
     cur.execute(_adapt_sql(sql), params)

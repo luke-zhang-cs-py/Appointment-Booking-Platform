@@ -154,6 +154,15 @@ def public_view(offering):
     }
 
 
+def owner_view(offering):
+    """An offering as its owner sees it: the public shape plus the fields
+    only they need. Same casing as everything else on the wire."""
+    view = public_view(offering)
+    view["isActive"] = bool(offering["is_active"])
+    view["sortOrder"] = offering["sort_order"]
+    return view
+
+
 def grouped_for_provider(provider_id):
     """Offerings bucketed by category, in CATEGORIES order.
 
