@@ -76,7 +76,7 @@ def send_welcome(user):
         log.exception("welcome email failed for user %s", user.get("id"))
 
 
-def notify_booked(appointment_id):
+def notify_booked(appointment_id, notify_provider=True):
     """A client claimed a slot: confirm to them, tell the provider."""
     try:
         appt = _load(appointment_id)
@@ -100,6 +100,12 @@ def notify_booked(appointment_id):
             appointment_id=appt["id"],
             user_id=appt["client_id"],
         )
+
+        # A coffee chat booking sends its own, richer host email naming the
+        # invite it came from. Sending this as well would be two messages about
+        # one event, which is how people learn to filter a sender.
+        if not notify_provider:
+            return
 
         text, html = _render(
             title="New booking",
@@ -327,6 +333,13 @@ def start_reminder_scheduler(app):
                 try:
                     with app.app_context():
                         send_due_reminders()
+                        # Coffee follow-ups ride the same tick rather than starting a
+                        # second timer: one background loop, one place to go wrong.
+                        try:
+                            import coffee_notifications
+                            coffee_notifications.send_due_nudges()
+                        except Exception:
+                            log.exception('coffee nudge sweep failed')
                 except Exception:
                     log.exception("reminder scan failed")
                 _stop.wait(interval)

@@ -9,6 +9,7 @@ from config import Config
 from routes.appointment_routes import bp as appointment_bp
 from routes.auth_routes import bp as auth_bp
 from routes.availability_routes import bp as availability_bp
+from routes.coffee_routes import bp as coffee_bp
 from routes.email_routes import bp as email_bp
 from routes.user_routes import bp as user_bp
 
@@ -29,6 +30,7 @@ def create_app():
     app.register_blueprint(availability_bp)
     app.register_blueprint(appointment_bp)
     app.register_blueprint(email_bp)
+    app.register_blueprint(coffee_bp)
 
     with app.app_context():
         db.init_db()
@@ -38,6 +40,17 @@ def create_app():
     @app.get("/")
     def index():
         return render_template("index.html")
+
+    @app.get("/coffee/<token>")
+    def coffee_invite_page(token):
+        """The guest's booking page.
+
+        Served as its own template rather than the SPA shell because the guest
+        has no account and no token in local storage -- dropping them into an
+        app that immediately asks them to log in is exactly the friction this
+        feature exists to remove.
+        """
+        return render_template("coffee.html", token=token)
 
     @app.errorhandler(404)
     def not_found(_e):

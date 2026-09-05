@@ -20,6 +20,15 @@ HTML/CSS/JS single-page frontend served by the same app. Three roles —
   a slow mail server never slows down a booking, every attempt is recorded in
   an `email_log` table, and a unique index over that log guarantees nobody is
   mailed the same thing twice.
+- **Coffee chats** (`coffee_chats.py` + `coffee_notifications.py`) — the
+  reverse direction: an email that *produces* a booking. Send someone an
+  invite, they click the link, they see your real availability, they pick a
+  time. **No account needed** — a coffee chat is usually first contact, and
+  asking a founder or an alum to register before they can pick a slot loses
+  most of them. Follow-ups go out automatically after three days (capped at
+  two, because a third is pestering), invites expire on their own, and a
+  booked one becomes an ordinary appointment with the usual confirmation and
+  24-hour reminder.
 - **Database layer built for the cloud** — runs on local SQLite with zero
   setup, and switches to a managed cloud Postgres database (Supabase, Neon,
   Render, Railway, AWS RDS...) by changing one environment variable
@@ -35,13 +44,17 @@ auth.py                    JWT creation/verification, RBAC decorators
 calendar_logic.py          Free-slot calculation engine
 mailer.py                  Email transport: SMTP, background queue, delivery log
 notifications.py           What gets mailed and when + the reminder scheduler
+coffee_chats.py            Invite lifecycle, tokens, guest booking
+coffee_notifications.py    Invite / nudge / booked / declined emails
 routes/
   auth_routes.py           /api/auth/register, /login, /me
   user_routes.py           /api/providers, /api/admin/users
   availability_routes.py   provider hours + blocked dates, public slot lookup
   appointment_routes.py    book / list / cancel / complete appointments
   email_routes.py          admin delivery log, test send, manual reminder run
+  coffee_routes.py         invites (host, authed) + booking (guest, token)
 templates/index.html       SPA shell
+templates/coffee.html      Guest booking page — no login, one decision
 static/architecture.html   Visual overview of every component (open it in a browser)
 static/css/style.css       Design system ("departure board" visual identity)
 static/js/api.js           Fetch wrapper (JWT storage + auth headers)
@@ -165,3 +178,35 @@ in `database.py`. On the email side: an unsubscribe link and a per-user
 notification preference, SPF/DKIM records for whatever domain you send from,
 and — once one process is no longer enough — moving the reminder scan out of
 the app thread and into cron or a task queue.
+
+## Coffee chat flow
+
+```
+host sends invite ──► guest gets an email with a tokenised link
+                          │
+                          ├─ opens it        → invite marked "viewed"
+                          ├─ picks a slot    → real appointment + confirmations
+                          ├─ declines        → host told, nothing held
+                          └─ silence         → one nudge after 3 days, then expiry
+```
+
+| Endpoint | Who | Purpose |
+|---|---|---|
+| `POST /api/coffee/invites` | host | create and send an invite |
+| `GET /api/coffee/invites` | host | list invites + conversion stats |
+| `POST /api/coffee/invites/<id>/nudge` | host | manual follow-up |
+| `DELETE /api/coffee/invites/<id>` | host | revoke |
+| `GET /coffee/<token>` | guest | booking page, no login |
+| `GET /api/coffee/public/<token>` | guest | invite details + free slots |
+| `POST /api/coffee/public/<token>/book` | guest | take a slot |
+| `POST /api/coffee/public/<token>/decline` | guest | say no |
+
+The token is the only credential on the guest side, so the public handlers
+return the host's name and free slots and nothing else — no ids, no token
+echo, no nudge counts. A leaked link should cost one coffee chat, not read
+access to a calendar.
+
+A guest who books gets a `users` row so `appointments.client_id` has
+something real to point at, created with an unusable password hash: mailable
+and bookable, unable to log in. If they later register properly the address
+already exists and their history comes with them.

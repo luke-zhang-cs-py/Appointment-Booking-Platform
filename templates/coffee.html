@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee chat — Almanac</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+  /* Built from the same custom properties as the app so this page belongs to
+     it, but laid out as a single-purpose page rather than a dashboard. The
+     guest has one decision to make; everything here serves that decision. */
+  .cc-wrap { max-width: 720px; margin: 0 auto; padding: 48px 24px 72px; }
+  .cc-head { margin-bottom: 28px; }
+  .cc-head h1 { font-family: var(--font-display); font-size: 30px;
+    margin: 0 0 10px; color: var(--parchment); letter-spacing: -0.01em; }
+  .cc-head p { color: var(--parchment-dim); font-size: 15px; line-height: 1.6;
+    margin: 0 0 6px; }
+  .cc-quote { border-left: 2px solid var(--brass); padding-left: 14px;
+    color: var(--parchment-dim); font-style: italic; margin: 14px 0 0; }
+
+  .cc-meta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px;
+    padding-top: 18px; border-top: 1px solid var(--border); }
+  .cc-meta div { font-size: 13px; }
+  .cc-meta span { display: block; color: var(--muted); font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 3px; }
+  .cc-meta b { color: var(--parchment); font-weight: 600;
+    font-family: var(--font-mono); font-size: 13px; }
+
+  .cc-card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius-l); padding: 22px; margin-top: 22px;
+    box-shadow: var(--shadow-card); }
+  .cc-card h2 { font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+
+  .cc-day { margin-bottom: 18px; }
+  .cc-day > h3 { font-size: 13px; color: var(--parchment); margin: 0 0 8px;
+    font-weight: 600; }
+  .cc-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cc-slot { background: var(--panel-alt); border: 1px solid var(--border);
+    color: var(--parchment); border-radius: var(--radius-s); padding: 8px 13px;
+    font-family: var(--font-mono); font-size: 13px; cursor: pointer;
+    transition: border-color .15s ease, background .15s ease; }
+  .cc-slot:hover { border-color: var(--brass); background: var(--panel-raised); }
+  .cc-slot.sel { background: var(--brass); border-color: var(--brass);
+    color: var(--ink); font-weight: 600; }
+
+  .cc-field { margin-top: 14px; }
+  .cc-field label { display: block; font-size: 12px; color: var(--muted);
+    margin-bottom: 6px; }
+  .cc-field input, .cc-field textarea { width: 100%; background: var(--ink);
+    border: 1px solid var(--border); color: var(--parchment);
+    border-radius: var(--radius-s); padding: 10px 12px; font-size: 14px;
+    font-family: var(--font-body); }
+  .cc-field input:focus, .cc-field textarea:focus { outline: none;
+    border-color: var(--brass); }
+
+  .cc-actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .cc-btn { background: var(--brass); color: var(--ink); border: none;
+    border-radius: var(--radius-s); padding: 11px 20px; font-weight: 700;
+    font-size: 14px; cursor: pointer; font-family: var(--font-body); }
+  .cc-btn:hover:not(:disabled) { background: var(--brass-strong); }
+  .cc-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .cc-btn.ghost { background: transparent; border: 1px solid var(--border);
+    color: var(--parchment-dim); font-weight: 600; }
+  .cc-btn.ghost:hover { border-color: var(--muted); }
+
+  .cc-note { font-size: 12.5px; color: var(--muted); line-height: 1.6;
+    margin-top: 14px; }
+  .cc-msg { border-radius: var(--radius-s); padding: 12px 14px; font-size: 13.5px;
+    line-height: 1.55; margin-top: 16px; }
+  .cc-msg.err { background: rgba(193,87,63,.14); border: 1px solid rgba(193,87,63,.4);
+    color: var(--clay-strong); }
+  .cc-msg.ok { background: rgba(79,163,150,.14); border: 1px solid rgba(79,163,150,.4);
+    color: var(--teal-strong); }
+  .cc-done { text-align: center; padding: 30px 10px; }
+  .cc-done h2 { font-family: var(--font-display); font-size: 26px;
+    color: var(--parchment); margin: 0 0 12px; text-transform: none;
+    letter-spacing: 0; }
+</style>
+</head>
+<body>
+<div class="cc-wrap" id="root">
+  <div class="cc-card"><div class="cc-note">Loading your invite…</div></div>
+</div>
+
+<script>
+const TOKEN = {{ token | tojson }};
+const root = document.getElementById('root');
+let state = { data: null, date: null, time: null };
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g,
+  (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+async function load() {
+  try {
+    const res = await fetch(`/api/coffee/public/${encodeURIComponent(TOKEN)}`);
+    const data = await res.json();
+    if (!res.ok) return fail(data.error || 'This invite link is not valid.');
+    state.data = data;
+    render();
+  } catch (e) {
+    fail('Could not reach the server. Please try again.');
+  }
+}
+
+function fail(message) {
+  root.innerHTML = `<div class="cc-card"><div class="cc-msg err">${esc(message)}</div></div>`;
+}
+
+function render() {
+  const d = state.data;
+
+  if (!d.open) {
+    const why = d.status === 'booked'
+      ? 'This invite has already been used to book a time.'
+      : d.status === 'declined'
+      ? 'This invite was declined.'
+      : 'This invite is no longer open.';
+    root.innerHTML = `
+      <div class="cc-head"><h1>Coffee chat with ${esc(d.hostName)}</h1></div>
+      <div class="cc-card"><div class="cc-msg err">${esc(why)}</div>
+        <div class="cc-note">If you still want to meet, ask
+          ${esc(d.hostName)} to send a fresh link.</div></div>`;
+    return;
+  }
+
+  const days = d.days || [];
+  const slotsHtml = days.length ? days.map((day) => `
+    <div class="cc-day">
+      <h3>${esc(day.label || day.date)}</h3>
+      <div class="cc-slots">
+        ${day.slots.map((s) => {
+          const t = s.start_time || s.start || s;
+          const on = state.date === day.date && state.time === t;
+          return `<button class="cc-slot${on ? ' sel' : ''}"
+                    data-date="${esc(day.date)}" data-time="${esc(t)}">${esc(t)}</button>`;
+        }).join('')}
+      </div>
+    </div>`).join('')
+    : `<div class="cc-note">No open times in the next couple of weeks.
+       Reply to the email and ${esc(d.hostName)} can open more.</div>`;
+
+  root.innerHTML = `
+    <div class="cc-head">
+      <h1>${esc(d.hostName)} would like a coffee chat</h1>
+      <p>${esc(d.topic)} — ${d.durationMin} minutes. Pick whatever time suits you.</p>
+      ${d.message ? `<p class="cc-quote">${esc(d.message)}</p>` : ''}
+      <div class="cc-meta">
+        <div><span>With</span><b>${esc(d.hostName)}</b></div>
+        <div><span>Length</span><b>${d.durationMin} min</b></div>
+        <div><span>You</span><b>${esc(d.guestEmail)}</b></div>
+      </div>
+    </div>
+
+    <div class="cc-card">
+      <h2>Choose a time</h2>
+      ${slotsHtml}
+    </div>
+
+    <div class="cc-card">
+      <h2>Your details</h2>
+      <div class="cc-field">
+        <label for="nm">Name</label>
+        <input id="nm" type="text" value="${esc(d.guestName || '')}"
+               placeholder="How should they greet you?">
+      </div>
+      <div class="cc-field">
+        <label for="nt">Anything to add? (optional)</label>
+        <textarea id="nt" rows="3" placeholder="A line about what you'd like to talk about."></textarea>
+      </div>
+      <div class="cc-actions">
+        <button class="cc-btn" id="go" disabled>Confirm</button>
+        <button class="cc-btn ghost" id="no">Can't make it</button>
+      </div>
+      <div class="cc-note">No account needed. You'll get a confirmation by email,
+        and a reminder the day before.</div>
+      <div id="msg"></div>
+    </div>`;
+
+  root.querySelectorAll('.cc-slot').forEach((b) => {
+    b.onclick = () => {
+      state.date = b.dataset.date;
+      state.time = b.dataset.time;
+      render();
+    };
+  });
+  const go = document.getElementById('go');
+  if (go) {
+    go.disabled = !(state.date && state.time);
+    if (state.date && state.time) {
+      go.textContent = `Confirm ${state.time}`;
+    }
+    go.onclick = confirmBooking;
+  }
+  document.getElementById('no').onclick = declineInvite;
+}
+
+function say(kind, text) {
+  document.getElementById('msg').innerHTML =
+    `<div class="cc-msg ${kind}">${esc(text)}</div>`;
+}
+
+async function confirmBooking() {
+  const go = document.getElementById('go');
+  go.disabled = true;
+  go.textContent = 'Booking…';
+  try {
+    const res = await fetch(`/api/coffee/public/${encodeURIComponent(TOKEN)}/book`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: state.date,
+        time: state.time,
+        name: document.getElementById('nm').value,
+        note: document.getElementById('nt').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      say('err', data.error || 'Could not book that time.');
+      go.disabled = false;
+      go.textContent = 'Confirm';
+      /* A 409 means the slot went while this page was open, so the times on
+       * screen are already stale -- reload rather than let them try again
+       * against a list that is wrong. */
+      if (res.status === 409) setTimeout(load, 1200);
+      return;
+    }
+    root.innerHTML = `
+      <div class="cc-card cc-done">
+        <h2>You're booked in</h2>
+        <p class="cc-note">${esc(data.date)} at ${esc(data.startTime)}–${esc(data.endTime)}
+          with ${esc(state.data.hostName)}.</p>
+        <p class="cc-note">A confirmation is on its way to
+          ${esc(state.data.guestEmail)}.</p>
+      </div>`;
+  } catch (e) {
+    say('err', 'Could not reach the server. Please try again.');
+    go.disabled = false;
+    go.textContent = 'Confirm';
+  }
+}
+
+async function declineInvite() {
+  const reason = prompt('Anything you want to pass on? (optional)') ?? '';
+  try {
+    const res = await fetch(`/api/coffee/public/${encodeURIComponent(TOKEN)}/decline`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) return say('err', data.error || 'Could not do that.');
+    root.innerHTML = `
+      <div class="cc-card cc-done">
+        <h2>Thanks for letting them know</h2>
+        <p class="cc-note">${esc(state.data.hostName)} has been told. Nothing
+          was held on either calendar.</p>
+      </div>`;
+  } catch (e) {
+    say('err', 'Could not reach the server. Please try again.');
+  }
+}
+
+load();
+</script>
+</body>
+</html>

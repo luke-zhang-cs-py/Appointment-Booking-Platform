@@ -226,6 +226,28 @@ CREATE TABLE IF NOT EXISTS email_log (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_appointment_email
 ON email_log (appointment_id, kind, recipient)
 WHERE appointment_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS coffee_invites (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    guest_email   TEXT NOT NULL,
+    guest_name    TEXT,
+    token         TEXT NOT NULL UNIQUE,
+    topic         TEXT,
+    message       TEXT,
+    duration_min  INTEGER NOT NULL DEFAULT 30,
+    status        TEXT NOT NULL DEFAULT 'sent'
+                  CHECK (status IN ('sent','viewed','booked','declined','expired','revoked')),
+    appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+    nudge_count   INTEGER NOT NULL DEFAULT 0,
+    last_nudge_at TEXT,
+    viewed_at     TEXT,
+    responded_at  TEXT,
+    expires_at    TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_coffee_host ON coffee_invites(host_id, status);
+CREATE INDEX IF NOT EXISTS idx_coffee_token ON coffee_invites(token);
 """
 
 SCHEMA_POSTGRES = """
@@ -294,6 +316,28 @@ CREATE TABLE IF NOT EXISTS email_log (
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_appointment_email
 ON email_log (appointment_id, kind, recipient)
 WHERE appointment_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS coffee_invites (
+    id            SERIAL PRIMARY KEY,
+    host_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    guest_email   TEXT NOT NULL,
+    guest_name    TEXT,
+    token         TEXT NOT NULL UNIQUE,
+    topic         TEXT,
+    message       TEXT,
+    duration_min  INTEGER NOT NULL DEFAULT 30,
+    status        TEXT NOT NULL DEFAULT 'sent'
+                  CHECK (status IN ('sent','viewed','booked','declined','expired','revoked')),
+    appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+    nudge_count   INTEGER NOT NULL DEFAULT 0,
+    last_nudge_at TEXT,
+    viewed_at     TEXT,
+    responded_at  TEXT,
+    expires_at    TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_coffee_host ON coffee_invites(host_id, status);
+CREATE INDEX IF NOT EXISTS idx_coffee_token ON coffee_invites(token);
 """
 
 
