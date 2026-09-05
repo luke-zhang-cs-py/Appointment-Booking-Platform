@@ -65,6 +65,7 @@ routes/
 templates/index.html       SPA shell
 templates/coffee.html      Guest booking page — no login, one decision
 static/architecture.html   Visual overview of every component (open it in a browser)
+static/js/app.js           SPA views, including What I offer + Coffee chats
 static/css/style.css       Design system ("departure board" visual identity)
 static/js/api.js           Fetch wrapper (JWT storage + auth headers)
 static/js/app.js           SPA routing + role-specific dashboard rendering
@@ -187,6 +188,22 @@ in `database.py`. On the email side: an unsubscribe link and a per-user
 notification preference, SPF/DKIM records for whatever domain you send from,
 and — once one process is no longer enough — moving the reminder scan out of
 the app thread and into cron or a task queue.
+
+## Using it as a provider
+
+Signing in as a provider gives four views: **My schedule**, **Appointments**,
+**What I offer**, and **Coffee chats**.
+
+*What I offer* lists the catalogue with the price editable in place — it is
+the field that actually changes, and a dialog for one number is more ceremony
+than the change deserves. Hiding an offering deactivates it rather than
+deleting it, because past bookings still reference it.
+
+*Coffee chats* sends an invite (optionally for a specific priced session),
+then tracks what happened to each one: sent, viewed, booked, declined. Open
+invites can be nudged, revoked, or have their link copied — plenty of people
+would rather paste it into a message they are already writing than have the
+platform send the email.
 
 ## Coffee chat flow
 

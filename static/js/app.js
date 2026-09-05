@@ -105,6 +105,8 @@ const NAV_BY_ROLE = {
   provider: [
     { id: "schedule", label: "My schedule" },
     { id: "appointments", label: "Appointments" },
+    { id: "offerings", label: "What I offer" },
+    { id: "coffee", label: "Coffee chats" },
   ],
   admin: [
     { id: "users", label: "Users" },
@@ -149,6 +151,8 @@ function selectView(viewId) {
     "my-appointments": renderClientAppointmentsView,
     "schedule": renderProviderScheduleView,
     "appointments": renderProviderAppointmentsView,
+    "offerings": renderOfferingsView,
+    "coffee": renderCoffeeView,
     "users": renderAdminUsersView,
     "all-appointments": renderAdminAppointmentsView,
     "emails": renderAdminEmailsView,
@@ -485,6 +489,257 @@ async function renderProviderAppointmentsView() {
         el("td", { class: "mono" }, a.date),
         el("td", { class: "mono" }, `${a.start_time}–${a.end_time}`),
         el("td", {}, el("span", { class: `status-pill ${a.status}` }, a.status)),
+        el("td", {}, actions),
+      ]));
+    });
+    table.append(tbody);
+    card.append(table);
+  } catch (err) {
+    card.append(el("div", { class: "form-msg error" }, err.message));
+  }
+}
+
+
+/* ---------------------------------------------------------------- */
+/* PROVIDER: What I offer                                            */
+/* ---------------------------------------------------------------- */
+function money(cents, currency) {
+  if (!cents) return "Free";
+  const symbol = { CAD: "$", USD: "$", GBP: "£", EUR: "€" }[currency] || "";
+  const whole = Math.floor(cents / 100), rem = cents % 100;
+  return `${symbol}${rem ? `${whole}.${String(rem).padStart(2, "0")}` : whole}`;
+}
+
+async function renderOfferingsView() {
+  const root = mainRoot();
+  root.innerHTML = "";
+  root.append(
+    el("h2", {}, "What I offer"),
+    el("p", { class: "lede" }, "Sessions people can book, and what they cost."),
+  );
+  const card = el("div", { class: "card" });
+  root.append(card);
+
+  try {
+    const { offerings } = await Api.get("/api/offerings/mine");
+    if (!offerings.length) {
+      card.append(el("div", { class: "empty-state" }, [
+        el("div", { class: "glyph" }, "☕"),
+        "Nothing listed yet. Add one below, or run seed_luke.py.",
+      ]));
+    } else {
+      const table = el("table", {}, [
+        el("thead", {}, el("tr", {}, [
+          el("th", {}, "Session"), el("th", {}, "Category"), el("th", {}, "Length"),
+          el("th", {}, "Price"), el("th", {}, "Status"), el("th", {}, ""),
+        ])),
+      ]);
+      const tbody = el("tbody");
+      offerings.forEach((o) => {
+        /* The price is edited in place rather than behind a form. It is the
+         * field that actually gets changed, and a dialog for one number is
+         * more ceremony than the change deserves. */
+        const price = el("input", {
+          type: "number", min: "0", step: "1",
+          value: String(o.price_cents / 100), style: "width:5.5rem;",
+        });
+        const save = el("button", { class: "btn btn-teal" }, "Save");
+        save.onclick = async () => {
+          const dollars = Number(price.value);
+          if (!Number.isFinite(dollars) || dollars < 0) {
+            return toast("Price must be zero or more.", "error");
+          }
+          try {
+            await Api.patch(`/api/offerings/mine/${o.id}`,
+                            { priceCents: Math.round(dollars * 100) });
+            toast(`${o.title} is now ${money(Math.round(dollars * 100), o.currency)}.`, "success");
+            renderOfferingsView();
+          } catch (err) { toast(err.message, "error"); }
+        };
+
+        const toggle = el("button",
+          { class: o.is_active ? "btn btn-danger" : "btn btn-teal" },
+          o.is_active ? "Hide" : "Show");
+        toggle.onclick = async () => {
+          try {
+            if (o.is_active) await Api.del(`/api/offerings/mine/${o.id}`);
+            else await Api.patch(`/api/offerings/mine/${o.id}`, { isActive: 1 });
+            renderOfferingsView();
+          } catch (err) { toast(err.message, "error"); }
+        };
+
+        tbody.append(el("tr", { style: o.is_active ? "" : "opacity:.5;" }, [
+          el("td", {}, [
+            el("div", {}, o.title),
+            o.summary ? el("div", { class: "muted", style: "font-size:.78rem;" }, o.summary) : "",
+          ]),
+          el("td", {}, o.category || "—"),
+          el("td", { class: "mono" }, `${o.duration_min} min`),
+          el("td", {}, el("div", { style: "display:flex; gap:.4rem; align-items:center;" },
+                            [price, save])),
+          el("td", {}, el("span",
+            { class: `status-pill ${o.is_active ? "confirmed" : "cancelled"}` },
+            o.is_active ? "live" : "hidden")),
+          el("td", {}, toggle),
+        ]));
+      });
+      table.append(tbody);
+      card.append(table);
+    }
+  } catch (err) {
+    card.append(el("div", { class: "form-msg error" }, err.message));
+  }
+
+  const add = el("div", { class: "card" });
+  add.append(el("h3", {}, "Add a session"));
+  const title = el("input", { type: "text", placeholder: "Technical mock interview" });
+  const cat = el("select", {});
+  ["Software engineering", "Computer science", "Web development", "Careers", "Other"]
+    .forEach((c) => cat.append(el("option", { value: c }, c)));
+  const dur = el("select", {});
+  [15, 30, 45, 60, 90].forEach((d) => dur.append(el("option", { value: String(d) }, `${d} min`)));
+  const newPrice = el("input", { type: "number", min: "0", step: "1", value: "0", style: "width:6rem;" });
+  const summary = el("input", { type: "text", placeholder: "One line people see in the list" });
+  const submit = el("button", { class: "btn btn-primary" }, "Add");
+  submit.onclick = async () => {
+    if (!title.value.trim()) return toast("Give it a title.", "error");
+    try {
+      await Api.post("/api/offerings/mine", {
+        title: title.value, category: cat.value, summary: summary.value,
+        durationMin: Number(dur.value),
+        priceCents: Math.round(Number(newPrice.value) * 100),
+      });
+      toast("Added.", "success");
+      renderOfferingsView();
+    } catch (err) { toast(err.message, "error"); }
+  };
+  add.append(
+    el("div", { style: "display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end;" },
+       [title, cat, dur, newPrice, submit]),
+    el("div", { style: "margin-top:.6rem;" }, summary),
+    el("p", { class: "muted", style: "font-size:.78rem; margin-top:.6rem;" },
+      "A session must start and end on a slot boundary, so your slot size decides "
+      + "which lengths are bookable at all — a 45-minute session needs a 15-minute grid."),
+  );
+  root.append(add);
+}
+
+/* ---------------------------------------------------------------- */
+/* PROVIDER: Coffee chats                                            */
+/* ---------------------------------------------------------------- */
+const INVITE_PILL = {
+  sent: "pending", viewed: "pending", booked: "confirmed",
+  declined: "cancelled", expired: "cancelled", revoked: "cancelled",
+};
+
+async function renderCoffeeView() {
+  const root = mainRoot();
+  root.innerHTML = "";
+  root.append(
+    el("h2", {}, "Coffee chats"),
+    el("p", { class: "lede" }, "Send someone a link. They pick a time without signing up."),
+  );
+
+  const send = el("div", { class: "card" });
+  send.append(el("h3", {}, "Send an invite"));
+  const email = el("input", { type: "email", placeholder: "them@example.com" });
+  const name = el("input", { type: "text", placeholder: "Their name (optional)" });
+  const offering = el("select", {});
+  offering.append(el("option", { value: "" }, "General chat — 30 min"));
+  const note = el("input", { type: "text", placeholder: "A line of context (optional)" });
+  const go = el("button", { class: "btn btn-primary" }, "Send invite");
+
+  try {
+    const { offerings } = await Api.get("/api/offerings/mine");
+    offerings.filter((o) => o.is_active).forEach((o) => {
+      offering.append(el("option", { value: String(o.id) },
+        `${o.title} — ${money(o.price_cents, o.currency)}, ${o.duration_min} min`));
+    });
+  } catch (_e) { /* the catalogue is optional; a general chat still works */ }
+
+  go.onclick = async () => {
+    if (!email.value.trim()) return toast("Who is it for?", "error");
+    const body = { email: email.value, name: name.value, message: note.value };
+    if (offering.value) body.offeringId = Number(offering.value);
+    go.disabled = true;
+    try {
+      await Api.post("/api/coffee/invites", body);
+      toast(`Invite sent to ${email.value}.`, "success");
+      renderCoffeeView();
+    } catch (err) { toast(err.message, "error"); go.disabled = false; }
+  };
+  send.append(
+    el("div", { style: "display:flex; gap:.6rem; flex-wrap:wrap; align-items:flex-end;" },
+       [email, name, offering, go]),
+    el("div", { style: "margin-top:.6rem;" }, note),
+  );
+  root.append(send);
+
+  const card = el("div", { class: "card" });
+  root.append(card);
+  try {
+    const { invites, stats } = await Api.get("/api/coffee/invites");
+
+    if (stats && stats.total) {
+      const rate = stats.bookedRate == null ? "—" : `${Math.round(stats.bookedRate * 100)}%`;
+      card.append(el("p", { class: "muted", style: "margin-top:0;" },
+        `${stats.total} invite${stats.total === 1 ? "" : "s"} sent · ${rate} booked`));
+    }
+    if (!invites.length) {
+      card.append(el("div", { class: "empty-state" }, [
+        el("div", { class: "glyph" }, "✉️"), "No invites yet.",
+      ]));
+      return;
+    }
+
+    const table = el("table", {}, [
+      el("thead", {}, el("tr", {}, [
+        el("th", {}, "Guest"), el("th", {}, "About"), el("th", {}, "Sent"),
+        el("th", {}, "Status"), el("th", {}, ""),
+      ])),
+    ]);
+    const tbody = el("tbody");
+    invites.forEach((i) => {
+      const actions = el("div", { style: "display:flex; gap:.4rem;" });
+      const open = i.status === "sent" || i.status === "viewed";
+      if (open) {
+        /* Copying the link matters as much as emailing it: plenty of people
+         * would rather paste it into a message they are already writing. */
+        const copy = el("button", { class: "btn btn-ghost" }, "Copy link");
+        copy.onclick = async () => {
+          const url = `${location.origin}/coffee/${i.token}`;
+          try {
+            await navigator.clipboard.writeText(url);
+            toast("Link copied.", "success");
+          } catch (_e) { prompt("Copy this link:", url); }
+        };
+        const nudge = el("button", { class: "btn btn-teal" }, "Nudge");
+        nudge.onclick = async () => {
+          try {
+            await Api.post(`/api/coffee/invites/${i.id}/nudge`);
+            toast("Follow-up sent.", "success");
+            renderCoffeeView();
+          } catch (err) { toast(err.message, "error"); }
+        };
+        const revoke = el("button", { class: "btn btn-danger" }, "Revoke");
+        revoke.onclick = async () => {
+          try { await Api.del(`/api/coffee/invites/${i.id}`); renderCoffeeView(); }
+          catch (err) { toast(err.message, "error"); }
+        };
+        actions.append(copy, nudge, revoke);
+      }
+      const nudged = i.nudge_count ? ` · nudged ${i.nudge_count}×` : "";
+      tbody.append(el("tr", {}, [
+        el("td", {}, [
+          el("div", {}, i.guest_name || i.guest_email),
+          i.guest_name ? el("div", { class: "muted", style: "font-size:.78rem;" }, i.guest_email) : "",
+        ]),
+        el("td", {}, i.topic || "Coffee chat"),
+        el("td", { class: "mono" }, (i.created_at || "").slice(0, 10)),
+        el("td", {}, [
+          el("span", { class: `status-pill ${INVITE_PILL[i.status] || "pending"}` }, i.status),
+          el("span", { class: "muted", style: "font-size:.72rem;" }, nudged),
+        ]),
         el("td", {}, actions),
       ]));
     });
