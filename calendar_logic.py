@@ -89,5 +89,51 @@ def get_free_slots(provider_id: int, date_str: str):
 
 
 def is_slot_free(provider_id: int, date_str: str, start_time: str, end_time: str) -> bool:
+    """Is [start_time, end_time) bookable, across however many slots it spans?
+
+    This used to require an exact match against one generated slot:
+
+        any(s["start"] == start_time and s["end"] == end_time for s in free)
+
+    which quietly made any appointment longer than the availability grid
+    impossible. A provider offering 30-minute slots could never take a
+    60-minute booking, because no generated slot is 60 minutes long -- and
+    the caller reported it as "someone just took that slot" when nothing was
+    booked at all, which is the worst kind of wrong error.
+
+    Walking consecutive free slots instead means a booking is free when every
+    slot it covers is free and it ends exactly on a boundary. A single-slot
+    booking still behaves identically, so nothing that worked before changes.
+    """
     free = get_free_slots(provider_id, date_str)
-    return any(s["start"] == start_time and s["end"] == end_time for s in free)
+    if not free:
+        return False
+
+    next_boundary = {s["start"]: s["end"] for s in free}
+    cursor = start_time
+    while cursor < end_time:
+        following = next_boundary.get(cursor)
+        if following is None:
+            return False          # not the start of a free slot
+        if following > end_time:
+            return False          # the last slot would overrun the booking
+        cursor = following
+    return cursor == end_time
+
+
+def slot_starts_for(provider_id: int, date_str: str, duration_min: int):
+    """Start times on this date that can actually hold `duration_min`.
+
+    The booking page needs this rather than the raw slot list: offering a
+    guest a 16:30 start for a 60-minute session when the day ends at 17:00 is
+    an invitation to hit an error.
+    """
+    free = get_free_slots(provider_id, date_str)
+    out = []
+    for slot in free:
+        start = slot["start"]
+        total = _to_minutes(start) + duration_min
+        end = _to_hhmm(total)
+        if total <= 24 * 60 and is_slot_free(provider_id, date_str, start, end):
+            out.append({"start": start, "end": end})
+    return out

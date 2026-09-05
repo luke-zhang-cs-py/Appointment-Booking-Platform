@@ -30,6 +30,20 @@ def _fail(exc, code=400):
     return jsonify({"error": str(exc)}), code
 
 
+def _offering_view(invite):
+    """The catalogue entry behind this invite, if there is one.
+
+    A guest booking a priced session should see the price before they pick a
+    time, not after. An invite with no offering is an ordinary coffee chat and
+    this is simply absent.
+    """
+    if not invite["offering_id"]:
+        return None
+    import offerings
+    row = offerings.get(invite["offering_id"])
+    return offerings.public_view(row) if row else None
+
+
 def _public_view(invite, host):
     """What a guest is allowed to see. Deliberately not the whole row.
 
@@ -44,6 +58,7 @@ def _public_view(invite, host):
         "topic": invite["topic"] or "Coffee chat",
         "message": invite["message"],
         "durationMin": invite["duration_min"],
+        "offering": _offering_view(invite),
         "status": invite["status"],
         "expiresAt": invite["expires_at"],
     }
@@ -64,6 +79,7 @@ def create_invite():
             topic=body.get("topic"),
             message=body.get("message"),
             duration_min=int(body.get("duration") or coffee_chats.DEFAULT_DURATION_MIN),
+            offering_id=body.get("offeringId"),
         )
     except InviteError as exc:
         return _fail(exc)

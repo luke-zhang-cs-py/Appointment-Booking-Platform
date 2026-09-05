@@ -18,6 +18,26 @@
   .cc-quote { border-left: 2px solid var(--brass); padding-left: 14px;
     color: var(--parchment-dim); font-style: italic; margin: 14px 0 0; }
 
+  /* The priced session behind the invite. Shown before the times, because
+     somebody deciding whether to book needs the price first -- burying it
+     under a slot picker is the pattern that makes people distrust a page. */
+  .cc-offer { background: var(--panel-alt); border: 1px solid var(--border);
+    border-left: 3px solid var(--brass); border-radius: var(--radius-m);
+    padding: 16px 18px; margin-top: 18px; }
+  .cc-offer .top { display: flex; justify-content: space-between;
+    align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .cc-offer h3 { margin: 0; font-size: 16px; color: var(--parchment);
+    font-family: var(--font-display); font-weight: 600; }
+  .cc-price { font-family: var(--font-mono); font-size: 17px; font-weight: 600;
+    color: var(--brass-strong); white-space: nowrap; }
+  .cc-price.free { color: var(--teal-strong); }
+  .cc-offer .tags { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .cc-tag { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+    background: var(--panel-raised); color: var(--parchment-dim);
+    border-radius: 20px; padding: 3px 10px; font-weight: 600; }
+  .cc-offer p { color: var(--parchment-dim); font-size: 13.5px; line-height: 1.65;
+    margin: 12px 0 0; }
+
   .cc-meta { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px;
     padding-top: 18px; border-top: 1px solid var(--border); }
   .cc-meta div { font-size: 13px; }
@@ -107,6 +127,27 @@ function fail(message) {
   root.innerHTML = `<div class="cc-card"><div class="cc-msg err">${esc(message)}</div></div>`;
 }
 
+/* An invite may be for a specific priced session or just a general chat.
+ * When it is priced, the price and the full description come before the
+ * slot picker -- deciding whether to book is a different question from
+ * deciding when, and the money answers the first one. */
+function offerHtml(o) {
+  if (!o) return '';
+  return `
+    <div class="cc-offer">
+      <div class="top">
+        <h3>${esc(o.title)}</h3>
+        <span class="cc-price${o.isFree ? ' free' : ''}">${esc(o.price)}</span>
+      </div>
+      <div class="tags">
+        <span class="cc-tag">${o.durationMin} min</span>
+        ${o.category ? `<span class="cc-tag">${esc(o.category)}</span>` : ''}
+        ${o.level ? `<span class="cc-tag">${esc(o.level)}</span>` : ''}
+      </div>
+      ${o.description ? `<p>${esc(o.description)}</p>` : ''}
+    </div>`;
+}
+
 function render() {
   const d = state.data;
 
@@ -143,8 +184,10 @@ function render() {
   root.innerHTML = `
     <div class="cc-head">
       <h1>${esc(d.hostName)} would like a coffee chat</h1>
-      <p>${esc(d.topic)} — ${d.durationMin} minutes. Pick whatever time suits you.</p>
+      <p>${d.offering ? 'Pick whatever time suits you.'
+           : esc(d.topic) + ' — ' + d.durationMin + ' minutes. Pick whatever time suits you.'}</p>
       ${d.message ? `<p class="cc-quote">${esc(d.message)}</p>` : ''}
+      ${offerHtml(d.offering)}
       <div class="cc-meta">
         <div><span>With</span><b>${esc(d.hostName)}</b></div>
         <div><span>Length</span><b>${d.durationMin} min</b></div>

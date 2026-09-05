@@ -39,7 +39,7 @@ import secrets
 from datetime import date, datetime, timedelta
 
 import database as db
-from calendar_logic import get_free_slots, is_slot_free
+from calendar_logic import get_free_slots, is_slot_free, slot_starts_for
 
 log = logging.getLogger(__name__)
 
@@ -94,14 +94,27 @@ def new_token():
 
 def create_invite(host_id, guest_email, guest_name=None, topic=None,
                   message=None, duration_min=DEFAULT_DURATION_MIN,
-                  expiry_days=DEFAULT_EXPIRY_DAYS):
+                  expiry_days=DEFAULT_EXPIRY_DAYS, offering_id=None):
     """Create an invite. Returns the row. Does not send anything -- the caller
-    decides when to mail, so that a failed send does not lose the invite."""
+    decides when to mail, so that a failed send does not lose the invite.
+
+    Naming an offering makes it the source of truth for length and topic, so
+    an invite cannot drift out of step with the catalogue entry it is for.
+    """
     guest_email = (guest_email or "").strip().lower()
     if "@" not in guest_email or guest_email.startswith("@") or guest_email.endswith("@"):
         raise InviteError("A valid guest email address is required.")
 
-    if duration_min not in ALLOWED_DURATIONS:
+    offering = None
+    if offering_id is not None:
+        import offerings as offerings_mod
+        offering = offerings_mod.get(offering_id)
+        if not offering or offering["provider_id"] != host_id:
+            raise InviteError("That offering does not belong to you.")
+        duration_min = offering["duration_min"]
+        topic = topic or offering["title"]
+
+    if duration_min not in ALLOWED_DURATIONS and offering is None:
         raise InviteError(
             f"Duration must be one of {', '.join(str(d) for d in ALLOWED_DURATIONS)} minutes.")
 
@@ -127,11 +140,11 @@ def create_invite(host_id, guest_email, guest_name=None, topic=None,
     invite_id = db.insert(
         """INSERT INTO coffee_invites
            (host_id, guest_email, guest_name, token, topic, message,
-            duration_min, status, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'sent', ?)""",
+            duration_min, offering_id, status, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?)""",
         (host_id, guest_email, (guest_name or "").strip() or None, token,
          (topic or "").strip() or None, (message or "").strip() or None,
-         duration_min, expires))
+         duration_min, offering_id, expires))
     return get_invite(invite_id)
 
 
@@ -185,11 +198,15 @@ def mark_viewed(invite):
 
 
 def available_slots(invite, days=SLOT_WINDOW_DAYS, start_from=None):
-    """Free slots on the host's calendar, grouped by day.
+    """Bookable start times on the host's calendar, grouped by day.
+
+    Asks for starts that can hold this invite's whole duration, not raw
+    slots. Showing a guest 16:45 for a 60-minute session when the day ends at
+    17:00 is an invitation to pick it and be told no.
 
     Reuses calendar_logic rather than reimplementing availability, so blocked
-    dates, recurring hours and existing bookings all behave identically to the
-    logged-in booking path.
+    dates, recurring hours and existing bookings all behave identically to
+    the logged-in booking path.
     """
     first = start_from or date.today()
     out = []
@@ -197,7 +214,8 @@ def available_slots(invite, days=SLOT_WINDOW_DAYS, start_from=None):
         day = first + timedelta(days=offset)
         day_str = day.isoformat()
         try:
-            slots = get_free_slots(invite["host_id"], day_str)
+            slots = slot_starts_for(invite["host_id"], day_str,
+                                    invite["duration_min"])
         except ValueError:
             continue
         if slots:

@@ -29,6 +29,12 @@ HTML/CSS/JS single-page frontend served by the same app. Three roles —
   two, because a third is pestering), invites expire on their own, and a
   booked one becomes an ordinary appointment with the usual confirmation and
   24-hour reminder.
+- **Priced offerings** (`offerings.py`) — a provider lists several things
+  they do, each with its own length, price and description, instead of one
+  free-text `specialty`. A coffee chat invite can name one, and the session
+  takes its duration and topic from the catalogue entry so the two cannot
+  drift apart. Money is stored in minor units as an integer; `0` means free
+  and is a real answer, not a missing one.
 - **Database layer built for the cloud** — runs on local SQLite with zero
   setup, and switches to a managed cloud Postgres database (Supabase, Neon,
   Render, Railway, AWS RDS...) by changing one environment variable
@@ -46,6 +52,8 @@ mailer.py                  Email transport: SMTP, background queue, delivery log
 notifications.py           What gets mailed and when + the reminder scheduler
 coffee_chats.py            Invite lifecycle, tokens, guest booking
 coffee_notifications.py    Invite / nudge / booked / declined emails
+offerings.py               Priced session catalogue per provider
+seed_luke.py               Seeds a provider with availability + catalogue
 routes/
   auth_routes.py           /api/auth/register, /login, /me
   user_routes.py           /api/providers, /api/admin/users
@@ -53,6 +61,7 @@ routes/
   appointment_routes.py    book / list / cancel / complete appointments
   email_routes.py          admin delivery log, test send, manual reminder run
   coffee_routes.py         invites (host, authed) + booking (guest, token)
+  offering_routes.py       catalogue CRUD (owner) + public browse
 templates/index.html       SPA shell
 templates/coffee.html      Guest booking page — no login, one decision
 static/architecture.html   Visual overview of every component (open it in a browser)
@@ -210,3 +219,26 @@ A guest who books gets a `users` row so `appointments.client_id` has
 something real to point at, created with an unusable password hash: mailable
 and bookable, unable to log in. If they later register properly the address
 already exists and their history comes with them.
+
+## Offerings and the slot grid
+
+```bash
+python seed_luke.py            # provider + a week of hours + 14 sessions
+python seed_luke.py --list     # show the catalogue
+python seed_luke.py --reset    # rebuild the catalogue from CATALOGUE
+```
+
+| Endpoint | Who | Purpose |
+|---|---|---|
+| `GET /api/providers/<id>/offerings` | anyone | browse the catalogue, grouped |
+| `GET /api/offerings/mine` | owner | list, including deactivated |
+| `POST /api/offerings/mine` | owner | create |
+| `PATCH /api/offerings/mine/<id>` | owner | edit title, price, duration… |
+| `DELETE /api/offerings/mine/<id>` | owner | deactivate (never deletes) |
+
+**A booking must begin and end on a slot boundary, so the provider's grid
+size decides which session lengths are bookable at all.** On a 30-minute
+grid a 45-minute session has no valid start time anywhere in the day — not
+rare, impossible. `seed_luke.py` therefore sets a 15-minute grid, which
+divides every duration in the catalogue, and the guest page asks for start
+times that can hold the whole session rather than raw slots.

@@ -236,6 +236,7 @@ CREATE TABLE IF NOT EXISTS coffee_invites (
     topic         TEXT,
     message       TEXT,
     duration_min  INTEGER NOT NULL DEFAULT 30,
+    offering_id   INTEGER REFERENCES offerings(id) ON DELETE SET NULL,
     status        TEXT NOT NULL DEFAULT 'sent'
                   CHECK (status IN ('sent','viewed','booked','declined','expired','revoked')),
     appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
@@ -248,6 +249,28 @@ CREATE TABLE IF NOT EXISTS coffee_invites (
 );
 CREATE INDEX IF NOT EXISTS idx_coffee_host ON coffee_invites(host_id, status);
 CREATE INDEX IF NOT EXISTS idx_coffee_token ON coffee_invites(token);
+
+-- What a provider offers, priced. A provider used to have one free-text
+-- `specialty`, which cannot express "I do three different things at three
+-- different rates". Money is stored in minor units (cents/pence) as an
+-- integer: floats lose money, and 0 is a first-class value meaning free.
+CREATE TABLE IF NOT EXISTS offerings (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    category     TEXT,
+    summary      TEXT,
+    description  TEXT,
+    duration_min INTEGER NOT NULL DEFAULT 30,
+    price_cents  INTEGER NOT NULL DEFAULT 0,
+    currency     TEXT NOT NULL DEFAULT 'CAD',
+    level        TEXT,
+    is_active    INTEGER NOT NULL DEFAULT 1,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_offerings_provider
+    ON offerings(provider_id, is_active, sort_order);
 """
 
 SCHEMA_POSTGRES = """
@@ -326,6 +349,7 @@ CREATE TABLE IF NOT EXISTS coffee_invites (
     topic         TEXT,
     message       TEXT,
     duration_min  INTEGER NOT NULL DEFAULT 30,
+    offering_id   INTEGER REFERENCES offerings(id) ON DELETE SET NULL,
     status        TEXT NOT NULL DEFAULT 'sent'
                   CHECK (status IN ('sent','viewed','booked','declined','expired','revoked')),
     appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
@@ -338,6 +362,24 @@ CREATE TABLE IF NOT EXISTS coffee_invites (
 );
 CREATE INDEX IF NOT EXISTS idx_coffee_host ON coffee_invites(host_id, status);
 CREATE INDEX IF NOT EXISTS idx_coffee_token ON coffee_invites(token);
+
+CREATE TABLE IF NOT EXISTS offerings (
+    id           SERIAL PRIMARY KEY,
+    provider_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title        TEXT NOT NULL,
+    category     TEXT,
+    summary      TEXT,
+    description  TEXT,
+    duration_min INTEGER NOT NULL DEFAULT 30,
+    price_cents  INTEGER NOT NULL DEFAULT 0,
+    currency     TEXT NOT NULL DEFAULT 'CAD',
+    level        TEXT,
+    is_active    INTEGER NOT NULL DEFAULT 1,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS'))
+);
+CREATE INDEX IF NOT EXISTS idx_offerings_provider
+    ON offerings(provider_id, is_active, sort_order);
 """
 
 
