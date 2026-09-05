@@ -5,8 +5,11 @@ for a specific calendar date.
 """
 
 import datetime as dt
+import logging
 
 import database as db
+
+log = logging.getLogger(__name__)
 
 
 def _to_minutes(hhmm: str) -> int:
@@ -58,20 +61,17 @@ def _busy_ranges(provider_id, date_str):
     """Minute ranges on this date that cannot be booked over.
 
     One-off blocks and confirmed appointments are the same thing here: time
-    that is already spoken for. A block with no start and end means the whole
-    day, which is expressed as a range covering it rather than as a separate
-    kind of answer -- a caller that has to check for a special value is a
-    caller that can forget to.
+    that is already spoken for. Every unclear case resolves *towards* being
+    busy, because the two ways to be wrong are not equal -- losing an hour of
+    availability is an inconvenience, and double-booking somebody is the
+    thing this function exists to prevent.
     """
     blocks = db.query(
         "SELECT start_time, end_time FROM blocked_slots "
         "WHERE provider_id = ? AND date = ?",
         (provider_id, date_str),
     )
-    if any(b["start_time"] is None for b in blocks):
-        return [(0, MINUTES_IN_A_DAY)]
-
-    ranges = [(_to_minutes(b["start_time"]), _to_minutes(b["end_time"])) for b in blocks]
+    ranges = [_block_range(b, provider_id, date_str) for b in blocks]
 
     booked = db.query(
         "SELECT start_time, end_time FROM appointments "
@@ -82,13 +82,58 @@ def _busy_ranges(provider_id, date_str):
                      for a in booked]
 
 
+def _block_range(block, provider_id, date_str):
+    """One blocked_slots row as a minute range.
+
+    Both times NULL means the whole day, which is the documented way to take
+    a day off. The other two cases are rows the API now refuses to create,
+    and used to accept:
+
+    * a start with no end raised AttributeError inside _to_minutes and 500'd
+      every slot lookup and every booking for that provider on that date;
+    * a time that is not a time raised ValueError and did the same.
+
+    Route validation stops new ones. This stops old ones, and reads them the
+    safe way round: a block nobody can interpret blocks the day rather than
+    quietly disappearing.
+    """
+    start, end = block["start_time"], block["end_time"]
+    if start is None:
+        return (0, MINUTES_IN_A_DAY)
+    try:
+        first = _to_minutes(start)
+        # "Blocked from 14:00" with no end is the natural reading of a row
+        # that has one, and it is the reading that cannot double-book.
+        last = MINUTES_IN_A_DAY if end is None else _to_minutes(end)
+    except (AttributeError, ValueError):
+        log.warning("provider %s has an unreadable block on %s (%r-%r); "
+                    "treating it as the whole day", provider_id, date_str, start, end)
+        return (0, MINUTES_IN_A_DAY)
+    return (first, last)
+
+
 def _tile(window, busy, earliest):
     """One availability window cut into free slot-sized pieces."""
-    end = _to_minutes(window["end_time"])
+    try:
+        start = _to_minutes(window["start_time"])
+        end = _to_minutes(window["end_time"])
+    except (AttributeError, ValueError):
+        log.warning("unreadable availability window %r, skipping", dict(window))
+        return []
+
     step = window["slot_minutes"]
+    if not step or step <= 0:
+        # The loop below advances the cursor by `step`. A zero or negative one
+        # never terminates: it appends slots until the process runs out of
+        # memory, taking the worker thread with it, and it is reachable from
+        # the API by anybody who can set their own hours. The route refuses
+        # these now; a row already stored still has to not hang the server.
+        log.warning("availability window %s has slot_minutes=%r, skipping",
+                    window.get("id", "?"), step)
+        return []
 
     out = []
-    cursor = _to_minutes(window["start_time"])
+    cursor = start
     while cursor + step <= end:
         slot_start, slot_end = cursor, cursor + step
         cursor += step

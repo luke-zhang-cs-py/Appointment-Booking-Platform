@@ -78,8 +78,15 @@ def _now():
     return datetime.now()
 
 
-def _iso(dt):
-    return dt.strftime("%Y-%m-%dT%H:%M:%S")
+def _iso(moment):
+    """A timestamp in the one format every column in this database uses.
+
+    Deliberately database.TIMESTAMP_FORMAT rather than a literal here: these
+    values are compared as strings against created_at, which the schema
+    fills in, and the two spellings drifting apart is exactly what made
+    due_for_nudge fire early.
+    """
+    return moment.strftime(db.TIMESTAMP_FORMAT)
 
 
 def new_token():

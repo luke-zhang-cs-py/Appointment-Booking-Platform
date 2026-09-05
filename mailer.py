@@ -22,7 +22,6 @@ What goes *in* those messages is notifications.py and
 coffee_notifications.py; how they are laid out is email_render.py.
 """
 
-import datetime as dt
 import logging
 import queue
 import smtplib
@@ -174,7 +173,11 @@ def _mark(log_id, status, error=None):
         return
     db.execute(
         "UPDATE email_log SET status = ?, error = ?, sent_at = ? WHERE id = ?",
-        (status, error, dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), log_id),
+        # db.now_stamp() rather than a format spelled out here: sent_at sits
+        # next to created_at in the delivery log, and the two used to be
+        # written in different formats *and* different timezones, so a message
+        # could appear to have been sent before it was queued.
+        (status, error, db.now_stamp(), log_id),
     )
 
 

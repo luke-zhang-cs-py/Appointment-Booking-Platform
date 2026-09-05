@@ -14,6 +14,7 @@ Query text is written once, using "?" placeholders (SQLite style). When the
 backend is Postgres, placeholders are translated to "%s" automatically.
 """
 
+import datetime as dt
 import re
 import sqlite3
 import threading
@@ -25,6 +26,35 @@ from config import Config
 
 _IS_POSTGRES = Config.DATABASE_URL.startswith(("postgres://", "postgresql://"))
 _local = threading.local()
+
+# One timestamp format, one timezone, everywhere.
+#
+# These columns are TEXT and are compared as strings -- coffee_chats works out
+# which invites have gone quiet with `COALESCE(last_nudge_at, created_at) < ?`.
+# That only means anything if every value in the comparison was written the
+# same way, and they were not:
+#
+#   created_at    SQLite DEFAULT datetime('now')   -> "2026-09-05 22:30:15" UTC
+#   last_nudge_at written by the app               -> "2026-09-05T18:30:15" local
+#
+# Two separators and two timezones in one comparison. A space sorts before a
+# "T", so any same-day created_at sorted before any same-day cutoff, and an
+# invite could be chased a day early; the UTC/local gap moved the boundary by
+# the machine's offset on top of that. Postgres had a third spelling again.
+#
+# Local rather than UTC because every other time in this project is local --
+# a provider's 09:00 means 09:00 where they are -- and mixing the two is the
+# bug above. Sortable either way: the format is lexicographically ordered.
+TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%S"
+
+# The same instant, spelled for each backend's DEFAULT clause.
+_SQLITE_NOW = "strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')"
+_POSTGRES_NOW = """to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS')"""
+
+
+def now_stamp():
+    """The current time in the format every timestamp column uses."""
+    return dt.datetime.now().strftime(TIMESTAMP_FORMAT)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +197,7 @@ CREATE TABLE IF NOT EXISTS users (
     role          TEXT NOT NULL CHECK (role IN ('admin', 'provider', 'client')),
     specialty     TEXT,
     is_active     INTEGER NOT NULL DEFAULT 1,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
 );
 
 CREATE TABLE IF NOT EXISTS availability (
@@ -198,7 +228,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     status      TEXT NOT NULL DEFAULT 'confirmed'
                 CHECK (status IN ('confirmed', 'cancelled', 'completed')),
     notes       TEXT,
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_slot
@@ -215,7 +245,7 @@ CREATE TABLE IF NOT EXISTS email_log (
     status         TEXT NOT NULL DEFAULT 'queued'
                    CHECK (status IN ('queued', 'sent', 'failed')),
     error          TEXT,
-    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
     sent_at        TEXT
 );
 
@@ -243,7 +273,7 @@ CREATE TABLE IF NOT EXISTS coffee_invites (
     viewed_at     TEXT,
     responded_at  TEXT,
     expires_at    TEXT NOT NULL,
-    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_coffee_host ON coffee_invites(host_id, status);
 CREATE INDEX IF NOT EXISTS idx_coffee_token ON coffee_invites(token);
@@ -265,7 +295,7 @@ CREATE TABLE IF NOT EXISTS offerings (
     level        TEXT,
     is_active    INTEGER NOT NULL DEFAULT 1,
     sort_order   INTEGER NOT NULL DEFAULT 0,
-    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_offerings_provider
     ON offerings(provider_id, is_active, sort_order);
@@ -280,7 +310,7 @@ CREATE TABLE IF NOT EXISTS users (
     role          TEXT NOT NULL CHECK (role IN ('admin', 'provider', 'client')),
     specialty     TEXT,
     is_active     BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at    TEXT NOT NULL DEFAULT (to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS'))
 );
 
 CREATE TABLE IF NOT EXISTS availability (
@@ -311,7 +341,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     status      TEXT NOT NULL DEFAULT 'confirmed'
                 CHECK (status IN ('confirmed', 'cancelled', 'completed')),
     notes       TEXT,
-    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at  TEXT NOT NULL DEFAULT (to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_active_slot
@@ -328,7 +358,7 @@ CREATE TABLE IF NOT EXISTS email_log (
     status         TEXT NOT NULL DEFAULT 'queued'
                    CHECK (status IN ('queued', 'sent', 'failed')),
     error          TEXT,
-    created_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at     TEXT NOT NULL DEFAULT (to_char(now(), 'YYYY-MM-DD"T"HH24:MI:SS')),
     sent_at        TIMESTAMP
 );
 
