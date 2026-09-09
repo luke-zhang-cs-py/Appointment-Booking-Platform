@@ -1,5 +1,9 @@
 # Almanac — Multi-Role Appointment Booking Platform
 
+[![CI](https://github.com/luke-zhang-cs-py/Appointment-Booking-Platform/actions/workflows/python-package.yml/badge.svg)](https://github.com/luke-zhang-cs-py/Appointment-Booking-Platform/actions/workflows/python-package.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue.svg)](https://www.python.org/)
+
 A full-stack scheduling app: Flask + JWT auth on the backend, a vanilla
 HTML/CSS/JS single-page frontend served by the same app. Three roles —
 **client**, **provider**, **admin** — each get their own dashboard.
@@ -275,3 +279,8 @@ grid a 45-minute session has no valid start time anywhere in the day — not
 rare, impossible. `seed_luke.py` therefore sets a 15-minute grid, which
 divides every duration in the catalogue, and the guest page asks for start
 times that can hold the whole session rather than raw slots.
+
+## License
+
+[MIT](LICENSE) — see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and test
+conventions.
