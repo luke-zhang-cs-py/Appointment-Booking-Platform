@@ -54,22 +54,38 @@ def test_the_running_app_is_not_using_the_placeholder(app):
     assert app.config["SECRET_KEY"] != config.DEV_SECRET_KEY
 
 
-def test_the_server_binds_to_loopback_by_default():
+def test_the_server_binds_to_loopback_by_default(monkeypatch):
     """It bound 0.0.0.0, and DEBUG defaults to on -- which put the Werkzeug
     debugger, an interactive Python console, on every interface of the
     machine. Anyone on the same network could run code as this process. The
-    other three apps in this family bind to 127.0.0.1; this one did not."""
-    assert config.Config.HOST == "127.0.0.1"
+    other three apps in this family bind to 127.0.0.1; this one did not.
 
-
-def test_binding_wider_stays_possible_on_purpose():
+    HOST is cleared first, because this is a claim about the *default* and
+    Config.HOST reads the environment. Asserting it against whatever the
+    machine happens to export failed on any host with HOST set -- which the
+    test below calls a deliberate, supported configuration.
+    """
     import importlib
-    import os
-    os.environ["HOST"] = "0.0.0.0"
+    monkeypatch.delenv("HOST", raising=False)
+    assert importlib.reload(config).Config.HOST == "127.0.0.1"
+    monkeypatch.undo()
+    importlib.reload(config)
+
+
+def test_binding_wider_stays_possible_on_purpose(monkeypatch):
+    """monkeypatch rather than os.environ directly.
+
+    This used to set HOST and then unconditionally `del` it, so running the
+    suite on a machine that already had HOST set removed it for every test
+    that came after. monkeypatch restores the previous value, including the
+    case where there was not one.
+    """
+    import importlib
+    monkeypatch.setenv("HOST", "0.0.0.0")
     try:
         assert importlib.reload(config).Config.HOST == "0.0.0.0"
     finally:
-        del os.environ["HOST"]
+        monkeypatch.undo()
         importlib.reload(config)
 
 
